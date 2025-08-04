@@ -2,8 +2,6 @@ module gbc
 
 go 1.23.0
 
-toolchain go1.24.5
-
 require modernc.org/libqbe v0.3.17
 
 require (
