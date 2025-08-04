@@ -1,10 +1,7 @@
 package main
 
-// TokenType defines the type of a token. It's an integer for efficiency.
 type TokenType int
 
-// The list of all possible tokens, defined using iota for automatic enumeration.
-// This list is a direct translation from the TokenType enum in lexer.h.
 const (
 	// Meta
 	TOK_EOF TokenType = iota // End of file/input
@@ -90,7 +87,7 @@ const (
 	TOK_DEC        // --
 )
 
-// keywordMap maps keyword strings to their corresponding TokenType.
+// keywordMap maps keyword strings to their corresponding TokenType
 var keywordMap = map[string]TokenType{
 	"auto":    TOK_AUTO,
 	"extrn":   TOK_EXTRN,
@@ -106,8 +103,8 @@ var keywordMap = map[string]TokenType{
 	"__asm__": TOK___ASM__,
 }
 
-// Token represents a single lexical unit from the source code.
-// It contains the type of the token, its value (for literals), and its position.
+// Token represents a single lexical unit from the source code
+// It contains the type of the token, its value (for literals), and its position
 type Token struct {
 	Type      TokenType
 	Value     string // Value for literals (string, number, ident)
