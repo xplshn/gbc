@@ -1,6 +1,6 @@
-> __GBC__ - Go B Compiler - https://github.com/xplshn/gbc
+> __CBC__ - C B Compiler - https://github.com/xplshn/cbc
 >
-> A much more capable B compiler, written using modernc.org/libqbe
+> The predecesor of this B compiler, written in C11 and using QBE as its backend
 ---
 
 # (gbc) | The Go B Compiler
@@ -84,6 +84,10 @@ The project is currently in its infancy, and the long-term goals are very ambiti
 >
 
 ### Contributions are hyper-mega welcome
+
+### acknowledgments
+
+- modernc.org/libqbe: A pure-go convertion of QBE, this allows `gbc` to be self-contained.
 
 ##### References
 - https://research.swtch.com/b-lang
