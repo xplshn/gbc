@@ -85,10 +85,10 @@ The project is currently in its infancy, and the long-term goals are very ambiti
 
 ### Contributions are hyper-mega welcome
 
-### acknowledgments
+---
 
-- modernc.org/libqbe: A pure-go convertion of QBE, this allows `gbc` to be self-contained.
-
+##### Acknowledgments
+- modernc.org/libqbe: A pure-go convertion of QBE, this allows `gbc` to be self-contained
 ##### References
 - https://research.swtch.com/b-lang
 - https://www.nokia.com/bell-labs/about/dennis-m-ritchie/kbman.html
