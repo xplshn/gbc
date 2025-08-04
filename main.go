@@ -124,7 +124,7 @@ func main() {
 	}
 
 	fmt.Println("----------------------")
-	fmt.Println("✅ Compilation successful!")
+	fmt.Println("Compilation successful!")
 }
 
 func assembleAndLink(outFile, mainAsm, inlineAsm string) error {
