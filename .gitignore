@@ -1,0 +1,9 @@
+.*
+*.o
+output.*
+lib/qbe/obj
+cbc
+gbc
+libb
+examples/libb
+tests/libb
