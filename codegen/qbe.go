@@ -5,7 +5,7 @@
 // Cleanups are appreciated
 // ---
 // Here be dragons
-package main
+package codegen
 
 import (
 	"fmt"
@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	. "gbc/parser"
 )
 
 type SymbolType int
@@ -65,7 +67,7 @@ type CodegenContext struct {
 	breakLabel       string
 	wordType         string // wordType is "l" for 64-bit, "w" for 32-bit.
 	wordSize         int    // wordSize is 8 for 64-bit, 4 for 32-bit.
-	warnings         bool 
+	warnings         bool
 	phiFromLabel     string // phiFromLabel tracks the predecessor label for constructing a phi node (needed for nested ternaries)
 }
 
@@ -153,11 +155,11 @@ func (ctx *CodegenContext) addSymbol(name string, symType SymbolType, isVector b
 	}
 
 	sym := &Symbol{
-		Name:      name,
-		Type:      symType,
-		QbeName:   qbeName,
-		IsVector:  isVector,
-		Next:      ctx.currentScope.Symbols,
+		Name:     name,
+		Type:     symType,
+		QbeName:  qbeName,
+		IsVector: isVector,
+		Next:     ctx.currentScope.Symbols,
 	}
 	ctx.currentScope.Symbols = sym
 	return sym

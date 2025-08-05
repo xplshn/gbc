@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"strconv"
@@ -399,7 +399,7 @@ func (l *Lexer) stringLiteral() Token {
 
 		errTok := l.currentToken()
 		if c == '\\' && IsFeatureEnabled(FEAT_C_ESCAPES) {
-			l.advance() // consume '\'
+			l.advance()                            // consume '\'
 			if !IsFeatureEnabled(FEAT_B_ESCAPES) { // Check if we are in a mode that should warn
 				Warning(WARN_C_ESCAPES, errTok, "Using C-style '\\' escape in string literal")
 			}

@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ type FeatureInfo struct {
 	Description string
 }
 
-var features = map[FeatureType]FeatureInfo{
+var Features = map[FeatureType]FeatureInfo{
 	FEAT_EXTRN:      {"extrn", true, "Allow the 'extrn' keyword"},
 	FEAT_ASM:        {"asm", true, "Allow the '__asm__' keyword and blocks"},
 	FEAT_B_ESCAPES:  {"b-escapes", true, "Recognize B-style '*' character escapes"},
@@ -35,7 +35,7 @@ var features = map[FeatureType]FeatureInfo{
 	FEAT_C_COMMENTS: {"c-comments", true, "Recognize C-style '//' comments"},
 }
 
-var featureMap = make(map[string]FeatureType)
+var FeatureMap = make(map[string]FeatureType)
 
 type WarningType int
 
@@ -61,7 +61,7 @@ type WarningInfo struct {
 	Description string
 }
 
-var warnings = map[WarningType]WarningInfo{
+var Warnings = map[WarningType]WarningInfo{
 	WARN_C_ESCAPES:           {"c-escapes", true, "Using C-style '\\' escapes instead of B's '*'"},
 	WARN_B_ESCAPES:           {"b-escapes", true, "Using historical B-style '*' escapes instead of C's '\\'"},
 	WARN_B_OPS:               {"b-ops", true, "Using historical B assignment operators like '=+'"},
@@ -76,41 +76,44 @@ var warnings = map[WarningType]WarningInfo{
 	WARN_EXTRA:               {"extra", true, "Extra warnings (e.g., poor choices, unrecognized flags)"},
 }
 
-var warningMap = make(map[string]WarningType)
+var WarningMap = make(map[string]WarningType)
 
 // init function to populate the lookup maps
 func init() {
-	for ft, info := range features {
-		featureMap[info.Name] = ft
+	for ft, info := range Features {
+		FeatureMap[info.Name] = ft
 	}
-	for wt, info := range warnings {
-		warningMap[info.Name] = wt
+	for wt, info := range Warnings {
+		WarningMap[info.Name] = wt
 	}
 }
 
 // SetFeature enables or disables a specific feature
 func SetFeature(ft FeatureType, enabled bool) {
-	if info, ok := features[ft]; ok {
+	if info, ok := Features[ft]; ok {
 		info.Enabled = enabled
-		features[ft] = info
+		Features[ft] = info
 	}
 }
+
 // IsFeatureEnabled checks if a specific feature is currently enabled
 func IsFeatureEnabled(ft FeatureType) bool {
-	if info, ok := features[ft]; ok {
+	if info, ok := Features[ft]; ok {
 		return info.Enabled
 	}
 	return false
 }
+
 // PrintFeatures prints the current status of all features
 func PrintFeatures() {
 	for i := FeatureType(0); i < FEAT_COUNT; i++ {
-		info := features[i]
+		info := Features[i]
 		fmt.Printf("  - %-20s: %v (%s)\n", info.Name, info.Enabled, info.Description)
 	}
 }
+
 // setAllWarnings enables or disables all warnings at once
-func setAllWarnings(enabled bool) {
+func SetAllWarnings(enabled bool) {
 	for i := WarningType(0); i < WARN_COUNT; i++ {
 		// -Wall should not enable pedantic warnings by default.
 		if i == WARN_PEDANTIC && enabled {
@@ -119,24 +122,27 @@ func setAllWarnings(enabled bool) {
 		SetWarning(i, enabled)
 	}
 }
+
 // SetWarning enables or disables a specific warning
 func SetWarning(wt WarningType, enabled bool) {
-	if info, ok := warnings[wt]; ok {
+	if info, ok := Warnings[wt]; ok {
 		info.Enabled = enabled
-		warnings[wt] = info
+		Warnings[wt] = info
 	}
 }
+
 // IsWarningEnabled checks if a specific warning is currently enabled.
 func IsWarningEnabled(wt WarningType) bool {
-	if info, ok := warnings[wt]; ok {
+	if info, ok := Warnings[wt]; ok {
 		return info.Enabled
 	}
 	return false
 }
+
 // PrintWarnings prints the current status of all warnings.
 func PrintWarnings() {
 	for i := WarningType(0); i < WARN_COUNT; i++ {
-		info := warnings[i]
+		info := Warnings[i]
 		fmt.Printf("  - %-20s: %v (%s)\n", info.Name, info.Enabled, info.Description)
 	}
 }
@@ -218,7 +224,7 @@ func Warning(wt WarningType, tok Token, format string, args ...interface{}) {
 		return
 	}
 	filename, line, col := findFileAndLine(tok)
-	warningName := warnings[wt].Name
+	warningName := Warnings[wt].Name
 	fmt.Fprintf(os.Stderr, "%s:%d:%d: \033[33mwarning:\033[0m ", filename, line, col)
 	fmt.Fprintf(os.Stderr, format, args...)
 	fmt.Fprintf(os.Stderr, " [-W%s]\n", warningName)

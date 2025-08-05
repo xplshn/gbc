@@ -11,6 +11,9 @@ import (
 	"strings"
 
 	"modernc.org/libqbe"
+
+	cg "gbc/codegen"
+	p "gbc/parser"
 )
 
 func main() {
@@ -19,11 +22,11 @@ func main() {
 	wall := flag.Bool("Wall", false, "Enable most warnings.")
 	w_no_all := flag.Bool("Wno-all", false, "Disable all warnings.")
 	w_pedantic := flag.Bool("pedantic", false, "Issue all warnings demanded by the current B std.")
-	for _, wInfo := range warnings {
+	for _, wInfo := range p.Warnings {
 		flag.Bool("W"+wInfo.Name, false, "Enable '"+wInfo.Name+"' warning.")
 		flag.Bool("Wno-"+wInfo.Name, false, "Disable '"+wInfo.Name+"' warning.")
 	}
-	for _, fInfo := range features {
+	for _, fInfo := range p.Features {
 		flag.Bool("F"+fInfo.Name, false, "Enable '"+fInfo.Name+"' feature.")
 		flag.Bool("Fno-"+fInfo.Name, false, "Disable '"+fInfo.Name+"' feature.")
 	}
@@ -40,19 +43,19 @@ func main() {
 	applyStd(*std)
 
 	if *w_no_all {
-		setAllWarnings(false)
+		p.SetAllWarnings(false)
 	}
 	if *wall {
-		oWARN_C_COMMENTS := IsWarningEnabled(WARN_C_COMMENTS)
-		oWARN_C_OPS := IsWarningEnabled(WARN_C_OPS)
-		oWARN_B_OPS := IsWarningEnabled(WARN_B_OPS)
-		setAllWarnings(true)
-		SetWarning(WARN_C_COMMENTS, oWARN_C_COMMENTS)
-		SetWarning(WARN_C_OPS, oWARN_C_OPS)
-		SetWarning(WARN_B_OPS, oWARN_B_OPS)
+		oWARN_C_COMMENTS := p.IsWarningEnabled(p.WARN_C_COMMENTS)
+		oWARN_C_OPS := p.IsWarningEnabled(p.WARN_C_OPS)
+		oWARN_B_OPS := p.IsWarningEnabled(p.WARN_B_OPS)
+		p.SetAllWarnings(true)
+		p.SetWarning(p.WARN_C_COMMENTS, oWARN_C_COMMENTS)
+		p.SetWarning(p.WARN_C_OPS, oWARN_C_OPS)
+		p.SetWarning(p.WARN_B_OPS, oWARN_B_OPS)
 	}
 	if *w_pedantic {
-		SetWarning(WARN_PEDANTIC, true)
+		p.SetWarning(p.WARN_PEDANTIC, true)
 		applyStd(*std)
 	}
 
@@ -61,26 +64,26 @@ func main() {
 		if strings.HasPrefix(f.Name, "W") && f.Name != "Wall" {
 			if strings.HasPrefix(f.Name, "Wno-") {
 				name := strings.TrimPrefix(f.Name, "Wno-")
-				if w, ok := warningMap[name]; ok {
-					SetWarning(w, false)
+				if w, ok := p.WarningMap[name]; ok {
+					p.SetWarning(w, false)
 				}
 			} else {
 				name := strings.TrimPrefix(f.Name, "W")
-				if w, ok := warningMap[name]; ok {
-					SetWarning(w, true)
+				if w, ok := p.WarningMap[name]; ok {
+					p.SetWarning(w, true)
 				}
 			}
 		}
 		if strings.HasPrefix(f.Name, "F") {
 			if strings.HasPrefix(f.Name, "Fno-") {
 				name := strings.TrimPrefix(f.Name, "Fno-")
-				if feat, ok := featureMap[name]; ok {
-					SetFeature(feat, false)
+				if feat, ok := p.FeatureMap[name]; ok {
+					p.SetFeature(feat, false)
 				}
 			} else {
 				name := strings.TrimPrefix(f.Name, "F")
-				if feat, ok := featureMap[name]; ok {
-					SetFeature(feat, true)
+				if feat, ok := p.FeatureMap[name]; ok {
+					p.SetFeature(feat, true)
 				}
 			}
 		}
@@ -88,25 +91,25 @@ func main() {
 
 	inputFiles := flag.Args()
 	if len(inputFiles) == 0 {
-		Error(Token{}, "no input files specified.")
+		p.Error(p.Token{}, "no input files specified.")
 	}
 
 	fmt.Println("----------------------")
 
 	fmt.Printf("Tokenizing %d source file(s)...\n", len(inputFiles))
 	records, allTokens := readAndTokenizeFiles(inputFiles)
-	SetSourceFiles(records)
+	p.SetSourceFiles(records)
 
 	fmt.Println("Parsing tokens into AST...")
-	parser := NewParser(allTokens)
+	parser := p.NewParser(allTokens)
 	ast := parser.Parse()
 
 	fmt.Println("Constant folding...")
-	ast = FoldConstants(ast)
+	ast = p.FoldConstants(ast)
 
 	fmt.Println("QBE Codegen...")
-	codegen := NewCodegenContext()
-	qbeIR, inlineAsm := codegen.Generate(ast)
+	codegenCtx := cg.NewCodegenContext()
+	qbeIR, inlineAsm := codegenCtx.Generate(ast)
 
 	fmt.Println("Calling libqbe on our QBE IR...")
 	target := libqbe.DefaultTarget(runtime.GOOS, runtime.GOARCH)
@@ -114,13 +117,13 @@ func main() {
 	err := libqbe.Main(target, "input.ssa", strings.NewReader(qbeIR), &asmBuf, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n--- QBE Compilation Failed ---\nGenerated IR:\n%s\n", qbeIR)
-		Error(Token{}, "libqbe error: %v", err)
+		p.Error(p.Token{}, "libqbe error: %v", err)
 	}
 
 	fmt.Printf("Assembling and linking to create '%s'...\n", *outFile)
 	err = assembleAndLink(*outFile, asmBuf.String(), inlineAsm)
 	if err != nil {
-		Error(Token{}, "assembler/linker failed: %v", err)
+		p.Error(p.Token{}, "assembler/linker failed: %v", err)
 	}
 
 	fmt.Println("----------------------")
@@ -157,29 +160,29 @@ func assembleAndLink(outFile, mainAsm, inlineAsm string) error {
 	return nil
 }
 
-func readAndTokenizeFiles(paths []string) ([]SourceFileRecord, []Token) {
-	var records []SourceFileRecord
-	var allTokens []Token
+func readAndTokenizeFiles(paths []string) ([]p.SourceFileRecord, []p.Token) {
+	var records []p.SourceFileRecord
+	var allTokens []p.Token
 
 	for i, path := range paths {
 		file, err := os.Open(path)
 		if err != nil {
-			Error(Token{FileIndex: -1}, "could not open file '%s': %v", path, err)
+			p.Error(p.Token{FileIndex: -1}, "could not open file '%s': %v", path, err)
 		}
 		defer file.Close()
 
 		content, err := io.ReadAll(file)
 		if err != nil {
-			Error(Token{FileIndex: -1}, "could not read file '%s': %v", path, err)
+			p.Error(p.Token{FileIndex: -1}, "could not read file '%s': %v", path, err)
 		}
 
 		runeContent := []rune(string(content))
-		records = append(records, SourceFileRecord{Name: path, Content: runeContent})
+		records = append(records, p.SourceFileRecord{Name: path, Content: runeContent})
 
-		lexer := NewLexer(runeContent, i)
+		lexer := p.NewLexer(runeContent, i)
 		for {
 			tok := lexer.Next()
-			if tok.Type == TOK_EOF {
+			if tok.Type == p.TOK_EOF {
 				break
 			}
 			allTokens = append(allTokens, tok)
@@ -189,53 +192,53 @@ func readAndTokenizeFiles(paths []string) ([]SourceFileRecord, []Token) {
 	if len(paths) > 0 {
 		finalFileIndex = len(paths) - 1
 	}
-	allTokens = append(allTokens, Token{Type: TOK_EOF, FileIndex: finalFileIndex})
+	allTokens = append(allTokens, p.Token{Type: p.TOK_EOF, FileIndex: finalFileIndex})
 	return records, allTokens
 }
 
 func applyStd(stdName string) {
-	isPedantic := IsWarningEnabled(WARN_PEDANTIC)
+	isPedantic := p.IsWarningEnabled(p.WARN_PEDANTIC)
 
 	switch stdName {
 	case "B":
 		// Flexible B: enable modern features unless pedantic
-		SetFeature(FEAT_B_OPS, true)
-		SetFeature(FEAT_B_ESCAPES, true)
-		SetFeature(FEAT_C_OPS, !isPedantic)
-		SetFeature(FEAT_C_ESCAPES, !isPedantic)
-		SetFeature(FEAT_C_COMMENTS, !isPedantic)
+		p.SetFeature(p.FEAT_B_OPS, true)
+		p.SetFeature(p.FEAT_B_ESCAPES, true)
+		p.SetFeature(p.FEAT_C_OPS, !isPedantic)
+		p.SetFeature(p.FEAT_C_ESCAPES, !isPedantic)
+		p.SetFeature(p.FEAT_C_COMMENTS, !isPedantic)
 
 		// Warn about modern features when in B mode
-		SetWarning(WARN_C_OPS, true)
-		SetWarning(WARN_C_ESCAPES, true)
-		SetWarning(WARN_C_COMMENTS, true)
+		p.SetWarning(p.WARN_C_OPS, true)
+		p.SetWarning(p.WARN_C_ESCAPES, true)
+		p.SetWarning(p.WARN_C_COMMENTS, true)
 		// Don't warn about B features
-		SetWarning(WARN_B_OPS, false)
-		SetWarning(WARN_B_ESCAPES, false)
+		p.SetWarning(p.WARN_B_OPS, false)
+		p.SetWarning(p.WARN_B_ESCAPES, false)
 
 		// Strict B: disable non-standard features
-		SetFeature(FEAT_EXTRN, !isPedantic)
-		SetFeature(FEAT_ASM, !isPedantic)
+		p.SetFeature(p.FEAT_EXTRN, !isPedantic)
+		p.SetFeature(p.FEAT_ASM, !isPedantic)
 
 	case "Bx":
 		// Bx (Modern B): enable C-style features, disable old B-style features
-		SetFeature(FEAT_B_OPS, false)
-		SetFeature(FEAT_B_ESCAPES, false)
+		p.SetFeature(p.FEAT_B_OPS, false)
+		p.SetFeature(p.FEAT_B_ESCAPES, false)
 
-		SetFeature(FEAT_C_OPS, true)
-		SetFeature(FEAT_C_ESCAPES, true)
-		SetFeature(FEAT_C_COMMENTS, true)
+		p.SetFeature(p.FEAT_C_OPS, true)
+		p.SetFeature(p.FEAT_C_ESCAPES, true)
+		p.SetFeature(p.FEAT_C_COMMENTS, true)
 
 		// Warn about historical B syntax when in Bx mode
-		SetWarning(WARN_B_OPS, true) // Won't really change anything because FEAT_B_OPS, FEAT_B_ESCAPES is disabled
-		SetWarning(WARN_B_ESCAPES, true)
-		// Don't warn about C-style features
-		SetWarning(WARN_C_OPS, false)
-		SetWarning(WARN_C_ESCAPES, false)
-		SetWarning(WARN_C_COMMENTS, false)
+		p.SetWarning(p.WARN_B_OPS, true) // Won't really change anything because p.FEAT_B_OPS, p.FEAT_B_ESCAPES is disabled
+		p.SetWarning(p.WARN_B_ESCAPES, true)
+		// Don't warnp. about C-style features
+		p.SetWarning(p.WARN_C_OPS, false)
+		p.SetWarning(p.WARN_C_ESCAPES, false)
+		p.SetWarning(p.WARN_C_COMMENTS, false)
 
 	default:
-		Error(Token{}, "unsupported standard '%s'. Supported: 'B', 'Bx'.", stdName)
+		p.Error(p.Token{}, "unsupported standard '%s'. Supported: 'B', 'Bx'.", stdName)
 	}
 }
 
@@ -261,6 +264,7 @@ func printListItem(name, desc string, enabled bool) {
 	}
 	fmt.Fprintf(os.Stderr, "      %-20s %s %s\n", name, descPadded, state)
 }
+
 // printHelp displays the compiler's command-line help information.
 func printHelp() {
 	fmt.Fprintf(os.Stderr, "\nCopyright (c) 2025: xplshn and contributors\n")
@@ -284,8 +288,8 @@ func printHelp() {
 	printItem("-W<warning>", "Enable a specific warning.")
 	printItem("-Wno-<warning>", "Disable a specific warning.")
 	printListHeader("warnings")
-	for i := WarningType(0); i < WARN_COUNT; i++ {
-		info := warnings[i]
+	for i := p.WarningType(0); i < p.WARN_COUNT; i++ {
+		info := p.Warnings[i]
 		printListItem(info.Name, info.Description, info.Enabled)
 	}
 
@@ -293,8 +297,8 @@ func printHelp() {
 	printItem("-F<feature>", "Enable a specific feature.")
 	printItem("-Fno-<feature>", "Disable a specific feature.")
 	printListHeader("features")
-	for i := FeatureType(0); i < FEAT_COUNT; i++ {
-		info := features[i]
+	for i := p.FeatureType(0); i < p.FEAT_COUNT; i++ {
+		info := p.Features[i]
 		printListItem(info.Name, info.Description, info.Enabled)
 	}
 
