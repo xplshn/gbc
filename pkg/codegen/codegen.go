@@ -1,11 +1,4 @@
-// TODO: Backport to CBC's codegen.c
-// ---
-// I feel like not all of the logic in codegen.go, belongs in codegen.go
-// ---
-// Cleanups are appreciated
-// ---
-// Here be dragons
-package main
+package codegen
 
 import (
 	"fmt"
@@ -13,68 +6,64 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"gbc/pkg/ast"
+	"gbc/pkg/token"
+	"gbc/pkg/util"
 )
 
-type SymbolType int
+type symbolType int
 
 const (
-	SYM_VAR SymbolType = iota
-	SYM_FUNC
-	SYM_LABEL
+	symVar symbolType = iota
+	symFunc
+	symLabel
 )
 
-// Symbol represents a named entity (variable or function)
-type Symbol struct {
+type symbol struct {
 	Name        string
-	Type        SymbolType
-	QbeName     string // Identifier used in the QBE IR
+	Type        symbolType
+	QbeName     string
 	IsVector    bool
 	IsByteArray bool
-	StackOffset int64 // byte offset for local (auto) variables from the base of the stack frame
-	Next        *Symbol
+	StackOffset int64
+	Next        *symbol
 }
 
-// Scope holds the symbols declared within a lexical scope
-type Scope struct {
-	Symbols *Symbol
-	Parent  *Scope
+type scope struct {
+	Symbols *symbol
+	Parent  *scope
 }
 
-// StringEntry maps a string literal to its generated data label in the IR
-type StringEntry struct {
+type stringEntry struct {
 	Value string
 	Label string
 }
 
-// AutoVarInfo holds information about a local (auto) variable, used to
-// calculate the function's stack frame layout before code generation
-type AutoVarInfo struct {
-	Node *AstNode
-	Size int64 // Size in bytes
+type autoVarInfo struct {
+	Node *ast.Node
+	Size int64
 }
 
-// CodegenContext holds the state for the code generation pass
-type CodegenContext struct {
-	out              strings.Builder // out is the buffer for the generated QBE IR
-	asmOut           strings.Builder // asmOut is the buffer for inline assembly blocks
-	strings          []StringEntry
+type Context struct {
+	out              strings.Builder
+	asmOut           strings.Builder
+	strings          []stringEntry
 	tempCount        int
 	labelCount       int
-	currentScope     *Scope
-	currentFuncFrame string // currentFuncFrame is the temporary QBE IR code for the current function's stack frame base pointer
+	currentScope     *scope
+	currentFuncFrame string
 	breakLabel       string
-	wordType         string // wordType is "l" for 64-bit, "w" for 32-bit.
-	wordSize         int    // wordSize is 8 for 64-bit, 4 for 32-bit.
-	warnings         bool 
-	phiFromLabel     string // phiFromLabel tracks the predecessor label for constructing a phi node (needed for nested ternaries)
+	wordType         string
+	wordSize         int
+	warnings         bool
+	phiFromLabel     string
 }
 
-// NewCodegenContext creates and initializes a new code generation context
-func NewCodegenContext() *CodegenContext {
+func NewContext(targetArch string) *Context {
 	var ws int
 	var wt string
-	// Set word size and type based on the host architecture (this approach sucks)
-	switch runtime.GOARCH {
+	switch targetArch {
 	case "amd64", "arm64", "riscv64", "s390x", "ppc64le", "mips64le":
 		ws = 8
 		wt = "l"
@@ -82,35 +71,33 @@ func NewCodegenContext() *CodegenContext {
 		ws = 4
 		wt = "w"
 	default:
-		// 64bit is the default
 		fmt.Fprintf(os.Stderr, "warning: unrecognized architecture '%s', defaulting to 64-bit\n", runtime.GOARCH)
 		ws = 8
 		wt = "l"
 	}
 
-	return &CodegenContext{
+	return &Context{
 		currentScope: newScope(nil),
 		wordSize:     ws,
 		wordType:     wt,
 	}
 }
 
-// Scope and Symbol Management
-func newScope(parent *Scope) *Scope {
-	return &Scope{Parent: parent}
+func newScope(parent *scope) *scope {
+	return &scope{Parent: parent}
 }
 
-func (ctx *CodegenContext) enterScope() {
+func (ctx *Context) enterScope() {
 	ctx.currentScope = newScope(ctx.currentScope)
 }
 
-func (ctx *CodegenContext) exitScope() {
+func (ctx *Context) exitScope() {
 	if ctx.currentScope.Parent != nil {
 		ctx.currentScope = ctx.currentScope.Parent
 	}
 }
 
-func (ctx *CodegenContext) findSymbol(name string) *Symbol {
+func (ctx *Context) findSymbol(name string) *symbol {
 	for s := ctx.currentScope; s != nil; s = s.Parent {
 		for sym := s.Symbols; sym != nil; sym = sym.Next {
 			if sym.Name == name {
@@ -121,7 +108,7 @@ func (ctx *CodegenContext) findSymbol(name string) *Symbol {
 	return nil
 }
 
-func (ctx *CodegenContext) findSymbolInCurrentScope(name string) *Symbol {
+func (ctx *Context) findSymbolInCurrentScope(name string) *symbol {
 	for sym := ctx.currentScope.Symbols; sym != nil; sym = sym.Next {
 		if sym.Name == name {
 			return sym
@@ -130,104 +117,103 @@ func (ctx *CodegenContext) findSymbolInCurrentScope(name string) *Symbol {
 	return nil
 }
 
-func (ctx *CodegenContext) addSymbol(name string, symType SymbolType, isVector bool, tok Token) *Symbol {
+func (ctx *Context) addSymbol(name string, symType symbolType, isVector bool, tok token.Token) *symbol {
 	if ctx.findSymbolInCurrentScope(name) != nil {
-		if symType == SYM_VAR {
-			// B allows redeclaration, which is handled by the analysis passes
+		if symType == symVar {
+			// B allows redeclaration
 		}
 	}
 
 	var qbeName string
 	switch symType {
-	case SYM_VAR:
-		if ctx.currentScope.Parent == nil { // Global scope
+	case symVar:
+		if ctx.currentScope.Parent == nil { // Global
 			qbeName = "$" + name
-		} else { // Local scope
+		} else { // Local
 			qbeName = fmt.Sprintf("%%.%s_%d", name, ctx.tempCount)
 			ctx.tempCount++
 		}
-	case SYM_FUNC:
+	case symFunc:
 		qbeName = "$" + name
-	case SYM_LABEL:
+	case symLabel:
 		qbeName = "@" + name
 	}
 
-	sym := &Symbol{
-		Name:      name,
-		Type:      symType,
-		QbeName:   qbeName,
-		IsVector:  isVector,
-		Next:      ctx.currentScope.Symbols,
+	sym := &symbol{
+		Name:     name,
+		Type:     symType,
+		QbeName:  qbeName,
+		IsVector: isVector,
+		Next:     ctx.currentScope.Symbols,
 	}
 	ctx.currentScope.Symbols = sym
 	return sym
 }
 
-// QBE Helpers
-func (ctx *CodegenContext) newTemp() string {
+func (ctx *Context) newTemp() string {
 	name := fmt.Sprintf("%%.t%d", ctx.tempCount)
 	ctx.tempCount++
 	return name
 }
 
-func (ctx *CodegenContext) newLabel() string {
+func (ctx *Context) newLabel() string {
 	name := fmt.Sprintf("@L%d", ctx.labelCount)
 	ctx.labelCount++
 	return name
 }
 
-func (ctx *CodegenContext) addString(value string) string {
+func (ctx *Context) addString(value string) string {
 	for _, entry := range ctx.strings {
 		if entry.Value == value {
 			return "$" + entry.Label
 		}
 	}
 	label := fmt.Sprintf("str%d", len(ctx.strings))
-	ctx.strings = append(ctx.strings, StringEntry{Value: value, Label: label})
+	ctx.strings = append(ctx.strings, stringEntry{Value: value, Label: label})
 	return "$" + label
 }
 
-func getOpStr(op TokenType) string {
+func getOpStr(op token.Type) string {
 	switch op {
-	case TOK_PLUS, TOK_PLUS_EQ, TOK_EQ_PLUS:
+	case token.Plus, token.PlusEq, token.EqPlus:
 		return "add"
-	case TOK_MINUS, TOK_MINUS_EQ, TOK_EQ_MINUS:
+	case token.Minus, token.MinusEq, token.EqMinus:
 		return "sub"
-	case TOK_STAR, TOK_STAR_EQ, TOK_EQ_STAR:
+	case token.Star, token.StarEq, token.EqStar:
 		return "mul"
-	case TOK_SLASH, TOK_SLASH_EQ, TOK_EQ_SLASH:
+	case token.Slash, token.SlashEq, token.EqSlash:
 		return "div"
-	case TOK_REM, TOK_REM_EQ, TOK_EQ_REM:
+	case token.Rem, token.RemEq, token.EqRem:
 		return "rem"
-	case TOK_AND, TOK_AND_EQ, TOK_EQ_AND:
+	case token.And, token.AndEq, token.EqAnd:
 		return "and"
-	case TOK_OR, TOK_OR_EQ, TOK_EQ_OR:
+	case token.Or, token.OrEq, token.EqOr:
 		return "or"
-	case TOK_XOR, TOK_XOR_EQ, TOK_EQ_XOR:
+	case token.Xor, token.XorEq, token.EqXor:
 		return "xor"
-	case TOK_SHL, TOK_SHL_EQ, TOK_EQ_SHL:
+	case token.Shl, token.ShlEq, token.EqShl:
 		return "shl"
-	case TOK_SHR, TOK_SHR_EQ, TOK_EQ_SHR:
+	case token.Shr, token.ShrEq, token.EqShr:
 		return "shr"
 	default:
 		return ""
 	}
 }
 
-func (ctx *CodegenContext) getCmpOpStr(op TokenType) string {
+func (ctx *Context) getCmpOpStr(op token.Type) string {
 	var base string
 	switch op {
-	case TOK_EQEQ:
+	case token.EqEq:
 		base = "ceq"
-	case TOK_NEQ:
+	case token.Neq:
 		base = "cne"
-	case TOK_LT:
+	case token.Lt:
 		base = "cslt"
-	case TOK_GT:
+	case token.Gt:
 		base = "csgt"
-	case TOK_LTE:
+	case token.Lte:
 		base = "csle"
-	case TOK_GTE:
+	case token.Gte:
 		base = "csge"
 	default:
 		return ""
@@ -235,8 +221,7 @@ func (ctx *CodegenContext) getCmpOpStr(op TokenType) string {
 	return base + ctx.wordType
 }
 
-// Main Generation Logic
-func (ctx *CodegenContext) Generate(root *AstNode) (qbeIR, inlineAsm string) {
+func (ctx *Context) Generate(root *ast.Node) (qbeIR, inlineAsm string) {
 	ctx.collectGlobals(root)
 	ctx.collectStrings(root)
 	ctx.findByteArrays(root)
@@ -253,66 +238,49 @@ func (ctx *CodegenContext) Generate(root *AstNode) (qbeIR, inlineAsm string) {
 	return ctx.out.String(), ctx.asmOut.String()
 }
 
-// collectGlobals walks the AST to find all top-level declarations (global
-// variables and functions) and adds them to the global scope
-func (ctx *CodegenContext) collectGlobals(node *AstNode) {
+func (ctx *Context) collectGlobals(node *ast.Node) {
 	if node == nil {
 		return
 	}
 
 	switch node.Type {
-	case AST_BLOCK:
-		// Recurse into top-level blocks
-		for _, stmt := range node.Data.(AstBlock).Stmts {
+	case ast.Block:
+		for _, stmt := range node.Data.(ast.BlockNode).Stmts {
 			ctx.collectGlobals(stmt)
 		}
-	case AST_VAR_DECL:
-		// Add global variables to the symbol table. Auto variables are handled later
+	case ast.VarDecl:
 		if ctx.currentScope.Parent == nil {
-			d := node.Data.(AstVarDecl)
-			// Do not redefine an existing symbol (e.g., from an extrn)
+			d := node.Data.(ast.VarDeclNode)
 			if ctx.findSymbolInCurrentScope(d.Name) == nil {
-				ctx.addSymbol(d.Name, SYM_VAR, d.IsVector, node.Tok)
+				ctx.addSymbol(d.Name, symVar, d.IsVector, node.Tok)
 			}
 		}
-	case AST_FUNC_DECL:
-		d := node.Data.(AstFuncDecl)
-		// Do not redefine an existing symbol
+	case ast.FuncDecl:
+		d := node.Data.(ast.FuncDeclNode)
 		if ctx.findSymbolInCurrentScope(d.Name) == nil {
-			ctx.addSymbol(d.Name, SYM_FUNC, false, node.Tok)
+			ctx.addSymbol(d.Name, symFunc, false, node.Tok)
 		}
-	case AST_EXTRN_DECL:
-		d := node.Data.(AstExtrnDecl)
-		// An `extrn` can declare a variable or a function. The type is resolved
-		// by usage. We initially declare it as a function
+	case ast.ExtrnDecl:
+		d := node.Data.(ast.ExtrnDeclNode)
 		if ctx.findSymbolInCurrentScope(d.Name) == nil {
-			ctx.addSymbol(d.Name, SYM_FUNC, false, node.Tok)
+			ctx.addSymbol(d.Name, symFunc, false, node.Tok)
 		}
 	}
 }
 
-// findByteArrays performs a flow-sensitive analysis to identify variables that
-// are used as byte pointers. B does not have a char type, so pointer arithmetic
-// must be scaled by the word size for word pointers and by 1 for byte pointers.
-//
-// This analysis iteratively propagates the "byte pointer" property. A variable
-// is marked as a byte pointer if it is assigned a string literal, or if it is
-// assigned another variable already marked as a byte pointer. The iteration
-// continues until a fixed point is reached.
-func (ctx *CodegenContext) findByteArrays(root *AstNode) {
-	for { // Loop until a fixed point is reached
+func (ctx *Context) findByteArrays(root *ast.Node) {
+	for {
 		changedInPass := false
-		var astWalker func(*AstNode)
-		astWalker = func(n *AstNode) {
+		var astWalker func(*ast.Node)
+		astWalker = func(n *ast.Node) {
 			if n == nil {
 				return
 			}
 
 			switch n.Type {
-			case AST_VAR_DECL:
-				// A vector initialized with a string is a byte array
-				d := n.Data.(AstVarDecl)
-				if d.IsVector && len(d.InitList) == 1 && d.InitList[0].Type == AST_STRING {
+			case ast.VarDecl:
+				d := n.Data.(ast.VarDeclNode)
+				if d.IsVector && len(d.InitList) == 1 && d.InitList[0].Type == ast.String {
 					sym := ctx.findSymbol(d.Name)
 					if sym != nil && !sym.IsByteArray {
 						sym.IsByteArray = true
@@ -320,20 +288,18 @@ func (ctx *CodegenContext) findByteArrays(root *AstNode) {
 					}
 				}
 
-			case AST_ASSIGN:
-				d := n.Data.(AstAssign)
-				if d.Lhs.Type == AST_IDENT {
-					lhsSym := ctx.findSymbol(d.Lhs.Data.(AstIdent).Name)
+			case ast.Assign:
+				d := n.Data.(ast.AssignNode)
+				if d.Lhs.Type == ast.Ident {
+					lhsSym := ctx.findSymbol(d.Lhs.Data.(ast.IdentNode).Name)
 					if lhsSym != nil && !lhsSym.IsByteArray {
 						rhsIsByteArray := false
 						rhsNode := d.Rhs
 						switch rhsNode.Type {
-						case AST_STRING:
-							// An assignment from a string literal creates a byte pointer
+						case ast.String:
 							rhsIsByteArray = true
-						case AST_IDENT:
-							// The byte pointer property propagates through assignment
-							rhsSym := ctx.findSymbol(rhsNode.Data.(AstIdent).Name)
+						case ast.Ident:
+							rhsSym := ctx.findSymbol(rhsNode.Data.(ast.IdentNode).Name)
 							if rhsSym != nil && rhsSym.IsByteArray {
 								rhsIsByteArray = true
 							}
@@ -347,63 +313,62 @@ func (ctx *CodegenContext) findByteArrays(root *AstNode) {
 				}
 			}
 
-			// Recurse through the AST
 			switch d := n.Data.(type) {
-			case AstAssign:
+			case ast.AssignNode:
 				astWalker(d.Lhs)
 				astWalker(d.Rhs)
-			case AstBinaryOp:
+			case ast.BinaryOpNode:
 				astWalker(d.Left)
 				astWalker(d.Right)
-			case AstUnaryOp:
+			case ast.UnaryOpNode:
 				astWalker(d.Expr)
-			case AstPostfixOp:
+			case ast.PostfixOpNode:
 				astWalker(d.Expr)
-			case AstIndirection:
+			case ast.IndirectionNode:
 				astWalker(d.Expr)
-			case AstAddressOf:
+			case ast.AddressOfNode:
 				astWalker(d.LValue)
-			case AstTernary:
+			case ast.TernaryNode:
 				astWalker(d.Cond)
 				astWalker(d.ThenExpr)
 				astWalker(d.ElseExpr)
-			case AstSubscript:
+			case ast.SubscriptNode:
 				astWalker(d.Array)
 				astWalker(d.Index)
-			case AstFuncCall:
+			case ast.FuncCallNode:
 				astWalker(d.FuncExpr)
 				for _, arg := range d.Args {
 					astWalker(arg)
 				}
-			case AstFuncDecl:
+			case ast.FuncDeclNode:
 				astWalker(d.Body)
-			case AstVarDecl:
+			case ast.VarDeclNode:
 				for _, init := range d.InitList {
 					astWalker(init)
 				}
 				astWalker(d.SizeExpr)
-			case AstIf:
+			case ast.IfNode:
 				astWalker(d.Cond)
 				astWalker(d.ThenBody)
 				astWalker(d.ElseBody)
-			case AstWhile:
+			case ast.WhileNode:
 				astWalker(d.Cond)
 				astWalker(d.Body)
-			case AstReturn:
+			case ast.ReturnNode:
 				astWalker(d.Expr)
-			case AstBlock:
+			case ast.BlockNode:
 				for _, s := range d.Stmts {
 					astWalker(s)
 				}
-			case AstSwitch:
+			case ast.SwitchNode:
 				astWalker(d.Expr)
 				astWalker(d.Body)
-			case AstCase:
+			case ast.CaseNode:
 				astWalker(d.Value)
 				astWalker(d.Body)
-			case AstDefault:
+			case ast.DefaultNode:
 				astWalker(d.Body)
-			case AstLabel:
+			case ast.LabelNode:
 				astWalker(d.Stmt)
 			}
 		}
@@ -415,124 +380,120 @@ func (ctx *CodegenContext) findByteArrays(root *AstNode) {
 	}
 }
 
-func (ctx *CodegenContext) collectStrings(root *AstNode) {
-	var walk func(*AstNode)
-	walk = func(n *AstNode) {
+func (ctx *Context) collectStrings(root *ast.Node) {
+	var walk func(*ast.Node)
+	walk = func(n *ast.Node) {
 		if n == nil {
 			return
 		}
-		if n.Type == AST_STRING {
-			ctx.addString(n.Data.(AstString).Value)
+		if n.Type == ast.String {
+			ctx.addString(n.Data.(ast.StringNode).Value)
 		}
 		switch d := n.Data.(type) {
-		case AstAssign:
+		case ast.AssignNode:
 			walk(d.Lhs)
 			walk(d.Rhs)
-		case AstBinaryOp:
+		case ast.BinaryOpNode:
 			walk(d.Left)
 			walk(d.Right)
-		case AstUnaryOp:
+		case ast.UnaryOpNode:
 			walk(d.Expr)
-		case AstPostfixOp:
+		case ast.PostfixOpNode:
 			walk(d.Expr)
-		case AstIndirection:
+		case ast.IndirectionNode:
 			walk(d.Expr)
-		case AstAddressOf:
+		case ast.AddressOfNode:
 			walk(d.LValue)
-		case AstTernary:
+		case ast.TernaryNode:
 			walk(d.Cond)
 			walk(d.ThenExpr)
 			walk(d.ElseExpr)
-		case AstSubscript:
+		case ast.SubscriptNode:
 			walk(d.Array)
 			walk(d.Index)
-		case AstFuncCall:
+		case ast.FuncCallNode:
 			walk(d.FuncExpr)
 			for _, arg := range d.Args {
 				walk(arg)
 			}
-		case AstFuncDecl:
+		case ast.FuncDeclNode:
 			walk(d.Body)
-		case AstVarDecl:
+		case ast.VarDeclNode:
 			for _, init := range d.InitList {
 				walk(init)
 			}
 			walk(d.SizeExpr)
-		case AstIf:
+		case ast.IfNode:
 			walk(d.Cond)
 			walk(d.ThenBody)
 			walk(d.ElseBody)
-		case AstWhile:
+		case ast.WhileNode:
 			walk(d.Cond)
 			walk(d.Body)
-		case AstReturn:
+		case ast.ReturnNode:
 			walk(d.Expr)
-		case AstBlock:
+		case ast.BlockNode:
 			for _, s := range d.Stmts {
 				walk(s)
 			}
-		case AstSwitch:
+		case ast.SwitchNode:
 			walk(d.Expr)
 			walk(d.Body)
-		case AstCase:
+		case ast.CaseNode:
 			walk(d.Value)
 			walk(d.Body)
-		case AstDefault:
+		case ast.DefaultNode:
 			walk(d.Body)
-		case AstLabel:
+		case ast.LabelNode:
 			walk(d.Stmt)
 		}
 	}
 	walk(root)
 }
 
-func isStringDerivedExpr(node *AstNode) bool {
+func isStringDerivedExpr(node *ast.Node) bool {
 	if node == nil {
 		return false
 	}
 	switch node.Type {
-	case AST_STRING:
+	case ast.String:
 		return true
-	case AST_BINARY_OP:
-		// Check for pointer arithmetic on a string literal, e.g., "hello" + 1
-		if node.Data.(AstBinaryOp).Op == TOK_PLUS {
-			return isStringDerivedExpr(node.Data.(AstBinaryOp).Left) || isStringDerivedExpr(node.Data.(AstBinaryOp).Right)
+	case ast.BinaryOp:
+		if node.Data.(ast.BinaryOpNode).Op == token.Plus {
+			return isStringDerivedExpr(node.Data.(ast.BinaryOpNode).Left) || isStringDerivedExpr(node.Data.(ast.BinaryOpNode).Right)
 		}
 	}
 	return false
 }
 
-func (ctx *CodegenContext) codegenLvalue(node *AstNode) string {
+func (ctx *Context) codegenLvalue(node *ast.Node) string {
 	if node == nil {
-		Error(Token{}, "Internal error: null l-value node in codegen")
+		util.Error(token.Token{}, "Internal error: null l-value node in codegen")
 	}
 	switch node.Type {
-	case AST_IDENT:
-		name := node.Data.(AstIdent).Name
+	case ast.Ident:
+		name := node.Data.(ast.IdentNode).Name
 		sym := ctx.findSymbol(name)
 		if sym == nil {
-			// Handle implicit function declarations
-			sym = ctx.addSymbol(name, SYM_FUNC, false, node.Tok)
+			sym = ctx.addSymbol(name, symFunc, false, node.Tok)
 		}
-		if sym.Type == SYM_FUNC {
+		if sym.Type == symFunc {
 			return sym.QbeName
 		}
 		return sym.QbeName
 
-	case AST_INDIRECTION:
-		res, _ := ctx.codegenExpr(node.Data.(AstIndirection).Expr)
+	case ast.Indirection:
+		res, _ := ctx.codegenExpr(node.Data.(ast.IndirectionNode).Expr)
 		return res
 
-	case AST_SUBSCRIPT:
-		d := node.Data.(AstSubscript)
+	case ast.Subscript:
+		d := node.Data.(ast.SubscriptNode)
 		arrayBasePtr, _ := ctx.codegenExpr(d.Array)
 		indexVal, _ := ctx.codegenExpr(d.Index)
 
-		// Scale the index by word size, unless it's a byte array
 		scale := ctx.wordSize
-		// Check if the base of the subscript is a known byte array
-		if d.Array.Type == AST_IDENT {
-			sym := ctx.findSymbol(d.Array.Data.(AstIdent).Name)
+		if d.Array.Type == ast.Ident {
+			sym := ctx.findSymbol(d.Array.Data.(ast.IdentNode).Name)
 			if sym != nil && sym.IsByteArray {
 				scale = 1
 			}
@@ -551,22 +512,18 @@ func (ctx *CodegenContext) codegenLvalue(node *AstNode) string {
 		return resultAddr
 
 	default:
-		Error(node.Tok, "Expression is not a valid l-value.")
+		util.Error(node.Tok, "Expression is not a valid l-value.")
 		return ""
 	}
 }
 
-func (ctx *CodegenContext) codegenLogicalCond(node *AstNode, trueL, falseL string) {
+func (ctx *Context) codegenLogicalCond(node *ast.Node, trueL, falseL string) {
 	condVal, _ := ctx.codegenExpr(node)
 
-	// Compare the condition value against zero to get a canonical 0 or 1
 	isNonZero := ctx.newTemp()
 	ctx.out.WriteString(fmt.Sprintf("\t%s =%s cne%s %s, 0\n", isNonZero, ctx.wordType, ctx.wordType, condVal))
 
 	var condValForJnz string
-	// The `jnz` instruction requires a word-sized argument. On 64-bit targets,
-	// the result of a comparison is a long, so it must be truncated. The
-	// truncation is safe as the value is only 0 or 1.
 	if ctx.wordType == "l" {
 		condValWord := ctx.newTemp()
 		ctx.out.WriteString(fmt.Sprintf("\t%s =w copy %s\n", condValWord, isNonZero))
@@ -578,50 +535,46 @@ func (ctx *CodegenContext) codegenLogicalCond(node *AstNode, trueL, falseL strin
 	ctx.out.WriteString(fmt.Sprintf("\tjnz %s, %s, %s\n", condValForJnz, trueL, falseL))
 }
 
-func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates bool) {
+func (ctx *Context) codegenExpr(node *ast.Node) (result string, terminates bool) {
 	if node == nil {
 		return "0", false
 	}
 
 	switch node.Type {
-	case AST_NUMBER:
-		return fmt.Sprintf("%d", node.Data.(AstNumber).Value), false
-	case AST_STRING:
-		return ctx.addString(node.Data.(AstString).Value), false
+	case ast.Number:
+		return fmt.Sprintf("%d", node.Data.(ast.NumberNode).Value), false
+	case ast.String:
+		return ctx.addString(node.Data.(ast.StringNode).Value), false
 
-	case AST_IDENT:
-		sym := ctx.findSymbol(node.Data.(AstIdent).Name)
+	case ast.Ident:
+		sym := ctx.findSymbol(node.Data.(ast.IdentNode).Name)
 		if sym == nil {
-			// Implicitly declare undefined functions as extrn
-			sym = ctx.addSymbol(node.Data.(AstIdent).Name, SYM_FUNC, false, node.Tok)
+			sym = ctx.addSymbol(node.Data.(ast.IdentNode).Name, symFunc, false, node.Tok)
 		}
 
-		// A function name used in a call expression evaluates to its label
-		isFuncNameInCall := node.Parent != nil && node.Parent.Type == AST_FUNC_CALL && node.Parent.Data.(AstFuncCall).FuncExpr == node
-		if sym.Type == SYM_FUNC && isFuncNameInCall {
+		isFuncNameInCall := node.Parent != nil && node.Parent.Type == ast.FuncCall && node.Parent.Data.(ast.FuncCallNode).FuncExpr == node
+		if sym.Type == symFunc && isFuncNameInCall {
 			return sym.QbeName, false
 		}
 
-		// For a variable, load its value from memory
 		addr := sym.QbeName
 		res := ctx.newTemp()
 		ctx.out.WriteString(fmt.Sprintf("\t%s =%s load%s %s\n", res, ctx.wordType, ctx.wordType, addr))
 		return res, false
 
-	case AST_ASSIGN:
-		d := node.Data.(AstAssign)
+	case ast.Assign:
+		d := node.Data.(ast.AssignNode)
 		lvalAddr := ctx.codegenLvalue(d.Lhs)
 		var rval string
-		if d.Op == TOK_EQ {
+		if d.Op == token.Eq {
 			rval, _ = ctx.codegenExpr(d.Rhs)
 		} else {
-			// Compound assignment
 			currentLvalVal := ctx.newTemp()
 			loadInstruction := "load" + ctx.wordType
-			if d.Lhs.Type == AST_SUBSCRIPT && d.Lhs.Data.(AstSubscript).Array.Type == AST_IDENT {
-				sym := ctx.findSymbol(d.Lhs.Data.(AstSubscript).Array.Data.(AstIdent).Name)
+			if d.Lhs.Type == ast.Subscript && d.Lhs.Data.(ast.SubscriptNode).Array.Type == ast.Ident {
+				sym := ctx.findSymbol(d.Lhs.Data.(ast.SubscriptNode).Array.Data.(ast.IdentNode).Name)
 				if sym != nil && sym.IsByteArray {
-					loadInstruction = "loadub" // Load from byte array requires an unsigned byte load
+					loadInstruction = "loadub"
 				}
 			}
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s %s %s\n", currentLvalVal, ctx.wordType, loadInstruction, lvalAddr))
@@ -633,8 +586,8 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 		}
 
 		storeInstruction := "store" + ctx.wordType
-		if d.Lhs.Type == AST_SUBSCRIPT && d.Lhs.Data.(AstSubscript).Array.Type == AST_IDENT {
-			sym := ctx.findSymbol(d.Lhs.Data.(AstSubscript).Array.Data.(AstIdent).Name)
+		if d.Lhs.Type == ast.Subscript && d.Lhs.Data.(ast.SubscriptNode).Array.Type == ast.Ident {
+			sym := ctx.findSymbol(d.Lhs.Data.(ast.SubscriptNode).Array.Data.(ast.IdentNode).Name)
 			if sym != nil && sym.IsByteArray {
 				storeInstruction = "storeb"
 			}
@@ -642,8 +595,8 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 		ctx.out.WriteString(fmt.Sprintf("\t%s %s, %s\n", storeInstruction, rval, lvalAddr))
 		return rval, false
 
-	case AST_BINARY_OP:
-		d := node.Data.(AstBinaryOp)
+	case ast.BinaryOp:
+		d := node.Data.(ast.BinaryOpNode)
 		l, _ := ctx.codegenExpr(d.Left)
 		r, _ := ctx.codegenExpr(d.Right)
 		res := ctx.newTemp()
@@ -652,47 +605,46 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 		} else if cmpOpStr := ctx.getCmpOpStr(d.Op); cmpOpStr != "" {
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s %s %s, %s\n", res, ctx.wordType, cmpOpStr, l, r))
 		} else {
-			Error(node.Tok, "Invalid binary operator token %d", d.Op)
+			util.Error(node.Tok, "Invalid binary operator token %d", d.Op)
 		}
 		return res, false
 
-	case AST_UNARY_OP:
-		d := node.Data.(AstUnaryOp)
+	case ast.UnaryOp:
+		d := node.Data.(ast.UnaryOpNode)
 		val, _ := ctx.codegenExpr(d.Expr)
 		res := ctx.newTemp()
 		switch d.Op {
-		case TOK_MINUS:
+		case token.Minus:
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s sub 0, %s\n", res, ctx.wordType, val))
-		case TOK_PLUS:
-			return val, false // Unary plus is a no-op
-		case TOK_NOT:
+		case token.Plus:
+			return val, false
+		case token.Not:
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s ceq%s %s, 0\n", res, ctx.wordType, ctx.wordType, val))
-		case TOK_COMPLEMENT:
+		case token.Complement:
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s xor %s, -1\n", res, ctx.wordType, val))
-		case TOK_INC, TOK_DEC: // Pre-increment/decrement
+		case token.Inc, token.Dec:
 			lvalAddr := ctx.codegenLvalue(d.Expr)
-			op := map[TokenType]string{TOK_INC: "add", TOK_DEC: "sub"}[d.Op]
+			op := map[token.Type]string{token.Inc: "add", token.Dec: "sub"}[d.Op]
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s %s %s, 1\n", res, ctx.wordType, op, val))
 			ctx.out.WriteString(fmt.Sprintf("\tstore%s %s, %s\n", ctx.wordType, res, lvalAddr))
 		default:
-			Error(node.Tok, "Unsupported unary operator")
+			util.Error(node.Tok, "Unsupported unary operator")
 		}
 		return res, false
 
-	case AST_POSTFIX_OP:
-		d := node.Data.(AstPostfixOp)
+	case ast.PostfixOp:
+		d := node.Data.(ast.PostfixOpNode)
 		lvalAddr := ctx.codegenLvalue(d.Expr)
 		res := ctx.newTemp()
-		// Load the original value before the operation
 		ctx.out.WriteString(fmt.Sprintf("\t%s =%s load%s %s\n", res, ctx.wordType, ctx.wordType, lvalAddr))
 		newVal := ctx.newTemp()
-		op := map[TokenType]string{TOK_INC: "add", TOK_DEC: "sub"}[d.Op]
+		op := map[token.Type]string{token.Inc: "add", token.Dec: "sub"}[d.Op]
 		ctx.out.WriteString(fmt.Sprintf("\t%s =%s %s %s, 1\n", newVal, ctx.wordType, op, res))
 		ctx.out.WriteString(fmt.Sprintf("\tstore%s %s, %s\n", ctx.wordType, newVal, lvalAddr))
-		return res, false // Postfix operations return the value before modification
+		return res, false
 
-	case AST_INDIRECTION:
-		exprNode := node.Data.(AstIndirection).Expr
+	case ast.Indirection:
+		exprNode := node.Data.(ast.IndirectionNode).Expr
 		addr, _ := ctx.codegenExpr(exprNode)
 		res := ctx.newTemp()
 
@@ -700,55 +652,50 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 		isBytePointer := false
 
 		if isStringDerivedExpr(exprNode) {
-			// An expression derived from a string literal is a byte pointer
 			isBytePointer = true
-		} else if exprNode.Type == AST_IDENT {
-			// A variable marked as a byte array is a byte pointer
-			sym := ctx.findSymbol(exprNode.Data.(AstIdent).Name)
+		} else if exprNode.Type == ast.Ident {
+			sym := ctx.findSymbol(exprNode.Data.(ast.IdentNode).Name)
 			if sym != nil && sym.IsByteArray {
 				isBytePointer = true
 			}
 		}
 
 		if isBytePointer {
-			// Dereferencing a byte pointer requires an unsigned byte load
 			loadInstruction = "loadub"
 		}
 		ctx.out.WriteString(fmt.Sprintf("\t%s =%s %s %s\n", res, ctx.wordType, loadInstruction, addr))
 		return res, false
 
-	case AST_SUBSCRIPT:
+	case ast.Subscript:
 		addr := ctx.codegenLvalue(node)
 		res := ctx.newTemp()
 		loadInstruction := "load" + ctx.wordType
-		if node.Data.(AstSubscript).Array.Type == AST_IDENT {
-			sym := ctx.findSymbol(node.Data.(AstSubscript).Array.Data.(AstIdent).Name)
+		if node.Data.(ast.SubscriptNode).Array.Type == ast.Ident {
+			sym := ctx.findSymbol(node.Data.(ast.SubscriptNode).Array.Data.(ast.IdentNode).Name)
 			if sym != nil && sym.IsByteArray {
-				loadInstruction = "loadub" // Use unsigned load for bytes
+				loadInstruction = "loadub"
 			}
 		}
 		ctx.out.WriteString(fmt.Sprintf("\t%s =%s %s %s\n", res, ctx.wordType, loadInstruction, addr))
 		return res, false
 
-	case AST_ADDRESS_OF:
-		lvalNode := node.Data.(AstAddressOf).LValue
-		if lvalNode.Type == AST_IDENT {
-			sym := ctx.findSymbol(lvalNode.Data.(AstIdent).Name)
-			// The value of a vector identifier is already its address
+	case ast.AddressOf:
+		lvalNode := node.Data.(ast.AddressOfNode).LValue
+		if lvalNode.Type == ast.Ident {
+			sym := ctx.findSymbol(lvalNode.Data.(ast.IdentNode).Name)
 			if sym != nil && sym.IsVector {
 				return ctx.codegenExpr(lvalNode)
 			}
 		}
-		// codegenLvalue returns the address of the l-value
 		return ctx.codegenLvalue(lvalNode), false
 
-	case AST_FUNC_CALL:
-		d := node.Data.(AstFuncCall)
-		if d.FuncExpr.Type == AST_IDENT {
-			name := d.FuncExpr.Data.(AstIdent).Name
+	case ast.FuncCall:
+		d := node.Data.(ast.FuncCallNode)
+		if d.FuncExpr.Type == ast.Ident {
+			name := d.FuncExpr.Data.(ast.IdentNode).Name
 			sym := ctx.findSymbol(name)
-			if sym != nil && sym.Type == SYM_VAR && !sym.IsVector {
-				Error(d.FuncExpr.Tok, "'%s' is a variable but is used as a function", name)
+			if sym != nil && sym.Type == symVar && !sym.IsVector {
+				util.Error(d.FuncExpr.Tok, "'%s' is a variable but is used as a function", name)
 			}
 		}
 
@@ -758,8 +705,7 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 		}
 		funcVal, _ := ctx.codegenExpr(d.FuncExpr)
 
-		// A call is a statement if its result is unused
-		isStmt := node.Parent != nil && node.Parent.Type == AST_BLOCK
+		isStmt := node.Parent != nil && node.Parent.Type == ast.Block
 
 		res := "0"
 		callStr := new(strings.Builder)
@@ -780,38 +726,34 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 		ctx.out.WriteString(callStr.String())
 		return res, false
 
-	case AST_TERNARY:
-		d := node.Data.(AstTernary)
+	case ast.Ternary:
+		d := node.Data.(ast.TernaryNode)
 		thenLabel := ctx.newLabel()
 		elseLabel := ctx.newLabel()
 		endLabel := ctx.newLabel()
-		res := ctx.newTemp() // res will hold the result from the phi node
+		res := ctx.newTemp()
 
 		ctx.codegenLogicalCond(d.Cond, thenLabel, elseLabel)
 
-		// The 'then' branch.
 		ctx.out.WriteString(thenLabel + "\n")
-		ctx.phiFromLabel = thenLabel // Track predecessor for phi
+		ctx.phiFromLabel = thenLabel
 		thenVal, thenTerminates := ctx.codegenExpr(d.ThenExpr)
-		thenFromLabelForPhi := ctx.phiFromLabel // Predecessor might change in nested ternary
+		thenFromLabelForPhi := ctx.phiFromLabel
 		if !thenTerminates {
 			ctx.out.WriteString(fmt.Sprintf("\tjmp %s\n", endLabel))
 		}
 
-		// The 'else' branch
 		ctx.out.WriteString(elseLabel + "\n")
-		ctx.phiFromLabel = elseLabel // Track predecessor for phi
+		ctx.phiFromLabel = elseLabel
 		elseVal, elseTerminates := ctx.codegenExpr(d.ElseExpr)
-		elseFromLabelForPhi := ctx.phiFromLabel // Predecessor might change in nested ternary
+		elseFromLabelForPhi := ctx.phiFromLabel
 		if !elseTerminates {
 			ctx.out.WriteString(fmt.Sprintf("\tjmp %s\n", endLabel))
 		}
 
-		// Join point for the branches.
 		if !thenTerminates || !elseTerminates {
 			ctx.out.WriteString(endLabel + "\n")
 
-			// The phi node merges the values from the 'then' and 'else' branches
 			phiArgs := new(strings.Builder)
 			if !thenTerminates {
 				fmt.Fprintf(phiArgs, "%s %s", thenFromLabelForPhi, thenVal)
@@ -825,36 +767,33 @@ func (ctx *CodegenContext) codegenExpr(node *AstNode) (result string, terminates
 
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s phi %s\n", res, ctx.wordType, phiArgs.String()))
 
-			// For nested ternaries, the end of this ternary is the predecessor
-			// for the outer one.
 			ctx.phiFromLabel = endLabel
 
 			return res, thenTerminates && elseTerminates
 		}
 
-		// If both branches of the ternary terminate, the expression as a whole terminates
 		return "0", true
 	}
-	Error(node.Tok, "Internal error: unhandled expression type in codegen: %v", node.Type)
+	util.Error(node.Tok, "Internal error: unhandled expression type in codegen: %v", node.Type)
 	return "", false
 }
 
-func (ctx *CodegenContext) codegenStmt(node *AstNode) (terminates bool) {
+func (ctx *Context) codegenStmt(node *ast.Node) (terminates bool) {
 	if node == nil {
 		return false
 	}
 	switch node.Type {
-	case AST_BLOCK:
-		isRealBlock := !node.Data.(AstBlock).IsSynthetic
+	case ast.Block:
+		isRealBlock := !node.Data.(ast.BlockNode).IsSynthetic
 		if isRealBlock {
 			ctx.enterScope()
 		}
 		var blockTerminates bool
-		for _, stmt := range node.Data.(AstBlock).Stmts {
+		for _, stmt := range node.Data.(ast.BlockNode).Stmts {
 			if blockTerminates {
-				isLabel := stmt.Type == AST_LABEL || stmt.Type == AST_CASE || stmt.Type == AST_DEFAULT
+				isLabel := stmt.Type == ast.Label || stmt.Type == ast.Case || stmt.Type == ast.Default
 				if !isLabel {
-					Warning(WARN_UNREACHABLE_CODE, stmt.Tok, "Unreachable code.")
+					util.Warn(util.WarnUnreachableCode, stmt.Tok, "Unreachable code.")
 					continue
 				}
 				blockTerminates = false
@@ -866,24 +805,24 @@ func (ctx *CodegenContext) codegenStmt(node *AstNode) (terminates bool) {
 		}
 		return blockTerminates
 
-	case AST_FUNC_DECL:
+	case ast.FuncDecl:
 		ctx.codegenFuncDecl(node)
 		return false
 
-	case AST_VAR_DECL:
+	case ast.VarDecl:
 		ctx.codegenVarDecl(node)
 		return false
 
-	case AST_RETURN:
+	case ast.Return:
 		val := "0"
-		if node.Data.(AstReturn).Expr != nil {
-			val, _ = ctx.codegenExpr(node.Data.(AstReturn).Expr)
+		if node.Data.(ast.ReturnNode).Expr != nil {
+			val, _ = ctx.codegenExpr(node.Data.(ast.ReturnNode).Expr)
 		}
 		ctx.out.WriteString(fmt.Sprintf("\tret %s\n", val))
 		return true
 
-	case AST_IF:
-		d := node.Data.(AstIf)
+	case ast.If:
+		d := node.Data.(ast.IfNode)
 		thenLabel := ctx.newLabel()
 		endLabel := ctx.newLabel()
 		elseLabel := endLabel
@@ -910,8 +849,8 @@ func (ctx *CodegenContext) codegenStmt(node *AstNode) (terminates bool) {
 		ctx.out.WriteString(endLabel + "\n")
 		return thenTerminates && elseTerminates
 
-	case AST_WHILE:
-		d := node.Data.(AstWhile)
+	case ast.While:
+		d := node.Data.(ast.WhileNode)
 		startLabel := ctx.newLabel()
 		bodyLabel := ctx.newLabel()
 		endLabel := ctx.newLabel()
@@ -931,39 +870,38 @@ func (ctx *CodegenContext) codegenStmt(node *AstNode) (terminates bool) {
 		ctx.out.WriteString(endLabel + "\n")
 		return false
 
-	case AST_SWITCH:
+	case ast.Switch:
 		return ctx.codegenSwitch(node)
 
-	case AST_LABEL:
-		d := node.Data.(AstLabel)
+	case ast.Label:
+		d := node.Data.(ast.LabelNode)
 		ctx.out.WriteString(fmt.Sprintf("@%s\n", d.Name))
 		return ctx.codegenStmt(d.Stmt)
 
-	case AST_GOTO:
-		d := node.Data.(AstGoto)
+	case ast.Goto:
+		d := node.Data.(ast.GotoNode)
 		ctx.out.WriteString(fmt.Sprintf("\tjmp @%s\n", d.Label))
 		return true
 
-	case AST_BREAK:
+	case ast.Break:
 		if ctx.breakLabel == "" {
-			Error(node.Tok, "'break' not in a loop or switch.")
+			util.Error(node.Tok, "'break' not in a loop or switch.")
 		}
 		ctx.out.WriteString(fmt.Sprintf("\tjmp %s\n", ctx.breakLabel))
 		return true
 
-	case AST_CASE:
-		d := node.Data.(AstCase)
+	case ast.Case:
+		d := node.Data.(ast.CaseNode)
 		ctx.out.WriteString(d.QbeLabel + "\n")
 		return ctx.codegenStmt(d.Body)
 
-	case AST_DEFAULT:
-		d := node.Data.(AstDefault)
+	case ast.Default:
+		d := node.Data.(ast.DefaultNode)
 		ctx.out.WriteString(d.QbeLabel + "\n")
 		return ctx.codegenStmt(d.Body)
 
 	default:
-		// Handle expression statements like `a + b;` or `foo();`
-		if node.Type <= AST_SUBSCRIPT {
+		if node.Type <= ast.Subscript {
 			_, terminates := ctx.codegenExpr(node)
 			return terminates
 		}
@@ -971,81 +909,73 @@ func (ctx *CodegenContext) codegenStmt(node *AstNode) (terminates bool) {
 	}
 }
 
-func (ctx *CodegenContext) findAllAutosInFunc(node *AstNode, autoVars *[]AutoVarInfo, definedNames map[string]bool) {
+func (ctx *Context) findAllAutosInFunc(node *ast.Node, autoVars *[]autoVarInfo, definedNames map[string]bool) {
 	if node == nil {
 		return
 	}
-	if node.Type == AST_VAR_DECL {
-		varData := node.Data.(AstVarDecl)
+	if node.Type == ast.VarDecl {
+		varData := node.Data.(ast.VarDeclNode)
 		if !definedNames[varData.Name] {
 			definedNames[varData.Name] = true
 			var size int64
 			if varData.IsVector {
 				if varData.SizeExpr != nil {
-					folded := FoldConstants(varData.SizeExpr)
-					if folded.Type != AST_NUMBER {
-						Error(node.Tok, "Local vector size must be a constant expression.")
+					folded := ast.FoldConstants(varData.SizeExpr)
+					if folded.Type != ast.Number {
+						util.Error(node.Tok, "Local vector size must be a constant expression.")
 					}
-					sizeInWords := folded.Data.(AstNumber).Value
+					sizeInWords := folded.Data.(ast.NumberNode).Value
 					if varData.IsBracketed {
 						size = (sizeInWords + 1) * int64(ctx.wordSize)
 					} else {
 						size = sizeInWords * int64(ctx.wordSize)
 					}
-				} else if len(varData.InitList) == 1 && varData.InitList[0].Type == AST_STRING {
-					// Size of a vector initialized by a string literal
-					strLen := int64(len(varData.InitList[0].Data.(AstString).Value))
-					numBytes := strLen + 1 // Include null terminator
-					// Align size to word boundary
+				} else if len(varData.InitList) == 1 && varData.InitList[0].Type == ast.String {
+					strLen := int64(len(varData.InitList[0].Data.(ast.StringNode).Value))
+					numBytes := strLen + 1
 					size = (numBytes + int64(ctx.wordSize) - 1) / int64(ctx.wordSize) * int64(ctx.wordSize)
 				} else {
 					size = int64(len(varData.InitList)) * int64(ctx.wordSize)
 				}
 				if size == 0 {
-					// A vector must have space for at least one element
 					size = int64(ctx.wordSize)
 				}
-				// A vector variable requires space for a pointer to its data,
-				// in addition to the data itself
 				size += int64(ctx.wordSize)
 			} else {
 				size = int64(ctx.wordSize)
 			}
-			*autoVars = append(*autoVars, AutoVarInfo{Node: node, Size: size})
+			*autoVars = append(*autoVars, autoVarInfo{Node: node, Size: size})
 		}
 	}
 
-	// Recurse into scopes
 	switch d := node.Data.(type) {
-	case AstIf:
+	case ast.IfNode:
 		ctx.findAllAutosInFunc(d.ThenBody, autoVars, definedNames)
 		ctx.findAllAutosInFunc(d.ElseBody, autoVars, definedNames)
-	case AstWhile:
+	case ast.WhileNode:
 		ctx.findAllAutosInFunc(d.Body, autoVars, definedNames)
-	case AstBlock:
+	case ast.BlockNode:
 		for _, s := range d.Stmts {
 			ctx.findAllAutosInFunc(s, autoVars, definedNames)
 		}
-	case AstSwitch:
+	case ast.SwitchNode:
 		ctx.findAllAutosInFunc(d.Body, autoVars, definedNames)
-	case AstCase:
+	case ast.CaseNode:
 		ctx.findAllAutosInFunc(d.Body, autoVars, definedNames)
-	case AstDefault:
+	case ast.DefaultNode:
 		ctx.findAllAutosInFunc(d.Body, autoVars, definedNames)
-	case AstLabel:
+	case ast.LabelNode:
 		ctx.findAllAutosInFunc(d.Stmt, autoVars, definedNames)
 	}
 }
 
-func (ctx *CodegenContext) codegenFuncDecl(node *AstNode) {
-	d := node.Data.(AstFuncDecl)
-	// Inline assembly functions are emitted directly
-	if d.Body != nil && d.Body.Type == AST_ASM_STMT {
-		asmCode := d.Body.Data.(AstAsmStmt).Code
+func (ctx *Context) codegenFuncDecl(node *ast.Node) {
+	d := node.Data.(ast.FuncDeclNode)
+	if d.Body != nil && d.Body.Type == ast.AsmStmt {
+		asmCode := d.Body.Data.(ast.AsmStmtNode).Code
 		ctx.asmOut.WriteString(fmt.Sprintf(".globl %s\n%s:\n\t%s\n", d.Name, d.Name, strings.ReplaceAll(asmCode, "\n", "\n\t")))
 		return
 	}
-	// Do not generate code for declarations (extrn functions)
 	if d.Body == nil {
 		return
 	}
@@ -1069,27 +999,23 @@ func (ctx *CodegenContext) codegenFuncDecl(node *AstNode) {
 	}
 	ctx.out.WriteString(") {\n@start\n")
 
-	// Pass 1: Find all auto variables to calculate stack frame size
-	var autoVars []AutoVarInfo
+	var autoVars []autoVarInfo
 	definedInFunc := make(map[string]bool)
 	for _, p := range d.Params {
-		definedInFunc[p.Data.(AstIdent).Name] = true
+		definedInFunc[p.Data.(ast.IdentNode).Name] = true
 	}
 	ctx.findAllAutosInFunc(d.Body, &autoVars, definedInFunc)
 
-	// The list of autos is built by recursive traversal, so it must be
-	// reversed to match declaration order for stack layout
 	for i, j := 0, len(autoVars)-1; i < j; i, j = i+1, j-1 {
 		autoVars[i], autoVars[j] = autoVars[j], autoVars[i]
 	}
 
 	var totalFrameSize int64
-	allLocals := make([]AutoVarInfo, 0, len(d.Params)+len(autoVars))
-	paramInfos := make([]AutoVarInfo, len(d.Params))
+	allLocals := make([]autoVarInfo, 0, len(d.Params)+len(autoVars))
+	paramInfos := make([]autoVarInfo, len(d.Params))
 	for i, p := range d.Params {
-		paramInfos[i] = AutoVarInfo{Node: p, Size: int64(ctx.wordSize)}
+		paramInfos[i] = autoVarInfo{Node: p, Size: int64(ctx.wordSize)}
 	}
-	// Parameters are laid out on the stack in reverse order
 	for i, j := 0, len(paramInfos)-1; i < j; i, j = i+1, j-1 {
 		paramInfos[i], paramInfos[j] = paramInfos[j], paramInfos[i]
 	}
@@ -1101,7 +1027,6 @@ func (ctx *CodegenContext) codegenFuncDecl(node *AstNode) {
 		totalFrameSize += local.Size
 	}
 
-	// Allocate space for the stack frame
 	if totalFrameSize > 0 {
 		ctx.currentFuncFrame = ctx.newTemp()
 		ctx.out.WriteString(fmt.Sprintf("\t%s =%s alloc8 %d\n", ctx.currentFuncFrame, ctx.wordType, totalFrameSize))
@@ -1110,13 +1035,12 @@ func (ctx *CodegenContext) codegenFuncDecl(node *AstNode) {
 	ctx.enterScope()
 	defer ctx.exitScope()
 
-	// Pass 2: Create symbols for parameters and locals and initialize them
 	var currentOffset int64
 	for _, local := range allLocals {
-		var sym *Symbol
-		if local.Node.Type == AST_IDENT { // A parameter
+		var sym *symbol
+		if local.Node.Type == ast.Ident {
 			p := local.Node
-			sym = ctx.addSymbol(p.Data.(AstIdent).Name, SYM_VAR, false, p.Tok)
+			sym = ctx.addSymbol(p.Data.(ast.IdentNode).Name, symVar, false, p.Tok)
 			sym.StackOffset = currentOffset
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s add %s, %d\n", sym.QbeName, ctx.wordType, ctx.currentFuncFrame, sym.StackOffset))
 			paramIndex := -1
@@ -1127,13 +1051,12 @@ func (ctx *CodegenContext) codegenFuncDecl(node *AstNode) {
 				}
 			}
 			ctx.out.WriteString(fmt.Sprintf("\tstore%s %%p%d, %s\n", ctx.wordType, paramIndex, sym.QbeName))
-		} else { // An auto variable
-			varData := local.Node.Data.(AstVarDecl)
-			sym = ctx.addSymbol(varData.Name, SYM_VAR, varData.IsVector, local.Node.Tok)
+		} else {
+			varData := local.Node.Data.(ast.VarDeclNode)
+			sym = ctx.addSymbol(varData.Name, symVar, varData.IsVector, local.Node.Tok)
 			sym.StackOffset = currentOffset
 			ctx.out.WriteString(fmt.Sprintf("\t%s =%s add %s, %d\n", sym.QbeName, ctx.wordType, ctx.currentFuncFrame, sym.StackOffset))
 
-			// The vector variable holds a pointer to the start of its allocated data
 			if varData.IsVector {
 				storageAddr := ctx.newTemp()
 				ctx.out.WriteString(fmt.Sprintf("\t%s =%s add %s, %d\n", storageAddr, ctx.wordType, sym.QbeName, ctx.wordSize))
@@ -1145,57 +1068,54 @@ func (ctx *CodegenContext) codegenFuncDecl(node *AstNode) {
 
 	bodyTerminates := ctx.codegenStmt(d.Body)
 
-	// Functions that do not explicitly return are assumed to return 0
 	if !bodyTerminates {
 		ctx.out.WriteString("\tret 0\n")
 	}
 	ctx.out.WriteString("}\n\n")
 }
 
-func (ctx *CodegenContext) codegenGlobalConst(node *AstNode) string {
-	folded := FoldConstants(node)
+func (ctx *Context) codegenGlobalConst(node *ast.Node) string {
+	folded := ast.FoldConstants(node)
 	switch folded.Type {
-	case AST_NUMBER:
-		return fmt.Sprintf("%d", folded.Data.(AstNumber).Value)
-	case AST_STRING:
-		return ctx.addString(folded.Data.(AstString).Value)
-	case AST_IDENT:
-		name := folded.Data.(AstIdent).Name
+	case ast.Number:
+		return fmt.Sprintf("%d", folded.Data.(ast.NumberNode).Value)
+	case ast.String:
+		return ctx.addString(folded.Data.(ast.StringNode).Value)
+	case ast.Ident:
+		name := folded.Data.(ast.IdentNode).Name
 		sym := ctx.findSymbol(name)
 		if sym == nil {
-			Error(node.Tok, "Undefined symbol '%s' in global initializer.", name)
+			util.Error(node.Tok, "Undefined symbol '%s' in global initializer.", name)
 		}
 		if sym.IsVector {
-			// A vector's name refers to the pointer, not the data. The data is
-			// in a separate storage symbol
 			return "$_" + name + "_storage"
 		}
 		return sym.QbeName
-	case AST_ADDRESS_OF:
-		lval := folded.Data.(AstAddressOf).LValue
-		if lval.Type != AST_IDENT {
-			Error(lval.Tok, "Global initializer must be the address of a global symbol.")
+	case ast.AddressOf:
+		lval := folded.Data.(ast.AddressOfNode).LValue
+		if lval.Type != ast.Ident {
+			util.Error(lval.Tok, "Global initializer must be the address of a global symbol.")
 		}
-		name := lval.Data.(AstIdent).Name
+		name := lval.Data.(ast.IdentNode).Name
 		sym := ctx.findSymbol(name)
 		if sym == nil {
-			Error(lval.Tok, "Undefined symbol '%s' in global initializer.", name)
+			util.Error(lval.Tok, "Undefined symbol '%s' in global initializer.", name)
 		}
 		if sym.IsVector {
 			return "$_" + name + "_storage"
 		}
 		return sym.QbeName
 	default:
-		Error(node.Tok, "Global initializer must be a constant expression.")
+		util.Error(node.Tok, "Global initializer must be a constant expression.")
 		return ""
 	}
 }
 
-func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
-	d := node.Data.(AstVarDecl)
+func (ctx *Context) codegenVarDecl(node *ast.Node) {
+	d := node.Data.(ast.VarDeclNode)
 	sym := ctx.findSymbol(d.Name)
 	if sym == nil {
-		Error(node.Tok, "Internal error: symbol '%s' not found during declaration.", d.Name)
+		util.Error(node.Tok, "Internal error: symbol '%s' not found during declaration.", d.Name)
 	}
 
 	if ctx.currentScope.Parent == nil { // Global
@@ -1203,7 +1123,7 @@ func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
 			storageName := "$_" + d.Name + "_storage"
 			sizeInWords := int64(0)
 			if d.SizeExpr != nil {
-				sizeExprData := FoldConstants(d.SizeExpr).Data.(AstNumber)
+				sizeExprData := ast.FoldConstants(d.SizeExpr).Data.(ast.NumberNode)
 				sizeInWords = sizeExprData.Value
 				if d.IsBracketed {
 					sizeInWords++
@@ -1234,7 +1154,6 @@ func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
 			}
 			ctx.out.WriteString(" }\n")
 
-			// The global vector variable is a pointer to its data
 			ctx.out.WriteString(fmt.Sprintf("data %s = { %s %s }\n", sym.QbeName, ctx.wordType, storageName))
 
 		} else { // Global scalar
@@ -1243,7 +1162,6 @@ func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
 				val := ctx.codegenGlobalConst(d.InitList[0])
 				fmt.Fprintf(&ctx.out, "%s %s", ctx.wordType, val)
 			} else {
-				// Uninitialized globals are zeroed
 				fmt.Fprintf(&ctx.out, "z %d", ctx.wordSize)
 			}
 			ctx.out.WriteString(" }\n")
@@ -1252,18 +1170,15 @@ func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
 	} else { // Auto
 		if len(d.InitList) > 0 {
 			if d.IsVector {
-				// Get the pointer to the vector's data on the stack
 				storagePtr := ctx.newTemp()
 				ctx.out.WriteString(fmt.Sprintf("\t%s =%s add %s, %d\n", storagePtr, ctx.wordType, sym.QbeName, ctx.wordSize))
 
-				if len(d.InitList) == 1 && d.InitList[0].Type == AST_STRING {
-					// `blit` is used for efficient block memory copy
-					strVal := d.InitList[0].Data.(AstString).Value
+				if len(d.InitList) == 1 && d.InitList[0].Type == ast.String {
+					strVal := d.InitList[0].Data.(ast.StringNode).Value
 					strLabel := ctx.addString(strVal)
-					sizeToCopy := len(strVal) + 1 // Copy the null terminator
+					sizeToCopy := len(strVal) + 1
 					ctx.out.WriteString(fmt.Sprintf("\tblit %s, %s, %d\n", strLabel, storagePtr, sizeToCopy))
 				} else {
-					// Initialize vector elements from a list of expressions
 					for i, initExpr := range d.InitList {
 						offset := int64(i) * int64(ctx.wordSize)
 						elemAddr := ctx.newTemp()
@@ -1273,7 +1188,6 @@ func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
 					}
 				}
 			} else {
-				// Initialize a scalar auto
 				rval, _ := ctx.codegenExpr(d.InitList[0])
 				ctx.out.WriteString(fmt.Sprintf("\tstore%s %s, %s\n", ctx.wordType, rval, sym.QbeName))
 			}
@@ -1281,8 +1195,8 @@ func (ctx *CodegenContext) codegenVarDecl(node *AstNode) {
 	}
 }
 
-func (ctx *CodegenContext) codegenSwitch(node *AstNode) bool {
-	d := node.Data.(AstSwitch)
+func (ctx *Context) codegenSwitch(node *ast.Node) bool {
+	d := node.Data.(ast.SwitchNode)
 	switchVal, _ := ctx.codegenExpr(d.Expr)
 	endLabel := ctx.newLabel()
 
@@ -1295,7 +1209,6 @@ func (ctx *CodegenContext) codegenSwitch(node *AstNode) bool {
 		defaultTarget = d.DefaultLabelName
 	}
 
-	// Generate a series of conditional jumps for the case values
 	for _, caseLabel := range d.CaseLabels {
 		caseValConst := fmt.Sprintf("%d", caseLabel.Value)
 		cmpResLong := ctx.newTemp()
@@ -1316,14 +1229,13 @@ func (ctx *CodegenContext) codegenSwitch(node *AstNode) bool {
 	}
 	ctx.out.WriteString(fmt.Sprintf("\tjmp %s\n", defaultTarget))
 
-	// Generate the code for the switch's body block
 	bodyTerminates := true
-	if d.Body != nil && d.Body.Type == AST_BLOCK {
+	if d.Body != nil && d.Body.Type == ast.Block {
 		codegenStarted := false
 		allPathsTerminate := true
-		bodyStmts := d.Body.Data.(AstBlock).Stmts
+		bodyStmts := d.Body.Data.(ast.BlockNode).Stmts
 		for _, stmt := range bodyStmts {
-			isLabel := stmt.Type == AST_CASE || stmt.Type == AST_DEFAULT || stmt.Type == AST_LABEL
+			isLabel := stmt.Type == ast.Case || stmt.Type == ast.Default || stmt.Type == ast.Label
 			if !codegenStarted && isLabel {
 				codegenStarted = true
 			}
@@ -1337,7 +1249,5 @@ func (ctx *CodegenContext) codegenSwitch(node *AstNode) bool {
 	}
 
 	ctx.out.WriteString(endLabel + "\n")
-	// A switch statement terminates if all its case paths, including
-	// the default
 	return bodyTerminates && d.DefaultLabelName != ""
 }

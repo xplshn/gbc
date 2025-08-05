@@ -1,9 +1,12 @@
-package main
+package lexer
 
 import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"gbc/pkg/token"
+	"gbc/pkg/util"
 )
 
 // Lexer holds the state required for tokenizing a source string.
@@ -13,7 +16,7 @@ type Lexer struct {
 	pos       int    // Current position in the source (index into the rune slice).
 	line      int    // Current line number, for error reporting.
 	column    int    // Current column number, for error reporting.
-	peeked    Token  // A peeked token, for lookahead.
+	peeked    token.Token  // A peeked token, for lookahead.
 	hasPeeked bool   // Flag indicating if a token has been peeked.
 }
 
@@ -28,7 +31,7 @@ func NewLexer(source []rune, fileIndex int) *Lexer {
 }
 
 // Next consumes and returns the next token from the source
-func (l *Lexer) Next() Token {
+func (l *Lexer) Next() token.Token {
 	if l.hasPeeked {
 		l.hasPeeked = false
 		return l.peeked
@@ -37,7 +40,7 @@ func (l *Lexer) Next() Token {
 }
 
 // Peek returns the next token without consuming it
-func (l *Lexer) Peek() Token {
+func (l *Lexer) Peek() token.Token {
 	if !l.hasPeeked {
 		l.peeked = l.getToken()
 		l.hasPeeked = true
@@ -76,8 +79,8 @@ func (l *Lexer) advance() rune {
 }
 
 // Token creation
-func (l *Lexer) makeToken(tokType TokenType, value string, startCol, length int) Token {
-	return Token{
+func (l *Lexer) makeToken(tokType token.Type, value string, startCol, length int) token.Token {
+	return token.Token{
 		Type:      tokType,
 		Value:     value,
 		FileIndex: l.fileIndex,
@@ -87,7 +90,7 @@ func (l *Lexer) makeToken(tokType TokenType, value string, startCol, length int)
 	}
 }
 
-func (l *Lexer) makeSimpleToken(tokType TokenType, length int) Token {
+func (l *Lexer) makeSimpleToken(tokType token.Type, length int) token.Token {
 	startCol := l.column
 	// Capture the line number at the start of the token
 	line := l.line
@@ -100,14 +103,14 @@ func (l *Lexer) makeSimpleToken(tokType TokenType, length int) Token {
 }
 
 // Main Lexing Logic
-func (l *Lexer) getToken() Token {
+func (l *Lexer) getToken() token.Token {
 	l.skipWhitespace()
 	startCol := l.column
 	startLine := l.line
 
 	c := l.peek()
 	if c == 0 {
-		return l.makeToken(TOK_EOF, "", startCol, 0)
+		return l.makeToken(token.EOF, "", startCol, 0)
 	}
 
 	if unicode.IsLetter(c) || c == '_' {
@@ -118,7 +121,7 @@ func (l *Lexer) getToken() Token {
 	}
 
 	// For single-character tokens, we can create a helper
-	makeCharToken := func(typ TokenType) Token {
+	makeCharToken := func(typ token.Type) token.Token {
 		tok := l.makeSimpleToken(typ, 1)
 		tok.Line = startLine
 		tok.Column = startCol
@@ -131,160 +134,160 @@ func (l *Lexer) getToken() Token {
 	case '\'':
 		return l.charLiteral()
 	case '(':
-		return makeCharToken(TOK_LPAREN)
+		return makeCharToken(token.LParen)
 	case ')':
-		return makeCharToken(TOK_RPAREN)
+		return makeCharToken(token.RParen)
 	case '{':
-		return makeCharToken(TOK_LBRACE)
+		return makeCharToken(token.LBrace)
 	case '}':
-		return makeCharToken(TOK_RBRACE)
+		return makeCharToken(token.RBrace)
 	case '[':
-		return makeCharToken(TOK_LBRACKET)
+		return makeCharToken(token.LBracket)
 	case ']':
-		return makeCharToken(TOK_RBRACKET)
+		return makeCharToken(token.RBracket)
 	case ';':
-		return makeCharToken(TOK_SEMI)
+		return makeCharToken(token.Semi)
 	case ',':
-		return makeCharToken(TOK_COMMA)
+		return makeCharToken(token.Comma)
 	case ':':
-		return makeCharToken(TOK_COLON)
+		return makeCharToken(token.Colon)
 	case '?':
-		return makeCharToken(TOK_QUESTION)
+		return makeCharToken(token.Question)
 	case '~':
-		return makeCharToken(TOK_COMPLEMENT)
+		return makeCharToken(token.Complement)
 	case '.':
 		if l.peekNext() == '.' && l.pos+2 < len(l.source) && l.source[l.pos+2] == '.' {
-			return l.makeSimpleToken(TOK_DOTS, 3)
+			return l.makeSimpleToken(token.Dots, 3)
 		}
 	case '+':
 		if l.peekNext() == '+' {
-			return l.makeSimpleToken(TOK_INC, 2)
+			return l.makeSimpleToken(token.Inc, 2)
 		}
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '+=' used")
-			return l.makeSimpleToken(TOK_PLUS_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '+=' used")
+			return l.makeSimpleToken(token.PlusEq, 2)
 		}
-		return makeCharToken(TOK_PLUS)
+		return makeCharToken(token.Plus)
 	case '-':
 		if l.peekNext() == '-' {
-			return l.makeSimpleToken(TOK_DEC, 2)
+			return l.makeSimpleToken(token.Dec, 2)
 		}
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '-=' used")
-			return l.makeSimpleToken(TOK_MINUS_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '-=' used")
+			return l.makeSimpleToken(token.MinusEq, 2)
 		}
-		return makeCharToken(TOK_MINUS)
+		return makeCharToken(token.Minus)
 	case '*':
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '*=' used")
-			return l.makeSimpleToken(TOK_STAR_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '*=' used")
+			return l.makeSimpleToken(token.StarEq, 2)
 		}
-		return makeCharToken(TOK_STAR)
+		return makeCharToken(token.Star)
 	case '/':
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '/=' used")
-			return l.makeSimpleToken(TOK_SLASH_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '/=' used")
+			return l.makeSimpleToken(token.SlashEq, 2)
 		}
-		return makeCharToken(TOK_SLASH)
+		return makeCharToken(token.Slash)
 	case '%':
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '%%=' used")
-			return l.makeSimpleToken(TOK_REM_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '%%=' used")
+			return l.makeSimpleToken(token.RemEq, 2)
 		}
-		return makeCharToken(TOK_REM)
+		return makeCharToken(token.Rem)
 	case '&':
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '&=' used")
-			return l.makeSimpleToken(TOK_AND_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '&=' used")
+			return l.makeSimpleToken(token.AndEq, 2)
 		}
-		return makeCharToken(TOK_AND)
+		return makeCharToken(token.And)
 	case '|':
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '|=' used")
-			return l.makeSimpleToken(TOK_OR_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '|=' used")
+			return l.makeSimpleToken(token.OrEq, 2)
 		}
-		return makeCharToken(TOK_OR)
+		return makeCharToken(token.Or)
 	case '^':
-		if l.peekNext() == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-			Warning(WARN_C_OPS, l.currentToken(), "C-style operator '^=' used")
-			return l.makeSimpleToken(TOK_XOR_EQ, 2)
+		if l.peekNext() == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+			util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '^=' used")
+			return l.makeSimpleToken(token.XorEq, 2)
 		}
-		return makeCharToken(TOK_XOR)
+		return makeCharToken(token.Xor)
 	case '!':
 		if l.peekNext() == '=' {
-			return l.makeSimpleToken(TOK_NEQ, 2)
+			return l.makeSimpleToken(token.Neq, 2)
 		}
-		return makeCharToken(TOK_NOT)
+		return makeCharToken(token.Not)
 	case '<':
 		if l.peekNext() == '<' {
-			if l.pos+2 < len(l.source) && l.source[l.pos+2] == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-				Warning(WARN_C_OPS, l.currentToken(), "C-style operator '<<=' used")
-				return l.makeSimpleToken(TOK_SHL_EQ, 3)
+			if l.pos+2 < len(l.source) && l.source[l.pos+2] == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+				util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '<<=' used")
+				return l.makeSimpleToken(token.ShlEq, 3)
 			}
-			return l.makeSimpleToken(TOK_SHL, 2)
+			return l.makeSimpleToken(token.Shl, 2)
 		}
 		if l.peekNext() == '=' {
-			return l.makeSimpleToken(TOK_LTE, 2)
+			return l.makeSimpleToken(token.Lte, 2)
 		}
-		return makeCharToken(TOK_LT)
+		return makeCharToken(token.Lt)
 	case '>':
 		if l.peekNext() == '>' {
-			if l.pos+2 < len(l.source) && l.source[l.pos+2] == '=' && IsFeatureEnabled(FEAT_C_OPS) {
-				Warning(WARN_C_OPS, l.currentToken(), "C-style operator '>>=' used")
-				return l.makeSimpleToken(TOK_SHR_EQ, 3)
+			if l.pos+2 < len(l.source) && l.source[l.pos+2] == '=' && util.IsFeatureEnabled(util.FeatCOps) {
+				util.Warn(util.WarnCOps, l.currentToken(), "C-style operator '>>=' used")
+				return l.makeSimpleToken(token.ShrEq, 3)
 			}
-			return l.makeSimpleToken(TOK_SHR, 2)
+			return l.makeSimpleToken(token.Shr, 2)
 		}
 		if l.peekNext() == '=' {
-			return l.makeSimpleToken(TOK_GTE, 2)
+			return l.makeSimpleToken(token.Gte, 2)
 		}
-		return makeCharToken(TOK_GT)
+		return makeCharToken(token.Gt)
 	case '=':
 		next := l.peekNext()
 		if next == '=' {
-			return l.makeSimpleToken(TOK_EQEQ, 2)
+			return l.makeSimpleToken(token.EqEq, 2)
 		}
-		if IsFeatureEnabled(FEAT_B_OPS) {
+		if util.IsFeatureEnabled(util.FeatBOps) {
 			if next == '<' && l.pos+2 < len(l.source) && l.source[l.pos+2] == '<' {
-				Warning(WARN_B_OPS, l.currentToken(), "B-style operator '=<<' used")
-				return l.makeSimpleToken(TOK_EQ_SHL, 3)
+				util.Warn(util.WarnBOps, l.currentToken(), "B-style operator '=<<' used")
+				return l.makeSimpleToken(token.EqShl, 3)
 			}
 			if next == '>' && l.pos+2 < len(l.source) && l.source[l.pos+2] == '>' {
-				Warning(WARN_B_OPS, l.currentToken(), "B-style operator '=>>' used")
-				return l.makeSimpleToken(TOK_EQ_SHR, 3)
+				util.Warn(util.WarnBOps, l.currentToken(), "B-style operator '=>>' used")
+				return l.makeSimpleToken(token.EqShr, 3)
 			}
 			if strings.ContainsRune("+-*/%&|^", next) {
-				Warning(WARN_B_OPS, l.currentToken(), "B-style assignment operator used")
+				util.Warn(util.WarnBOps, l.currentToken(), "B-style assignment operator used")
 				switch next {
 				case '+':
-					return l.makeSimpleToken(TOK_EQ_PLUS, 2)
+					return l.makeSimpleToken(token.EqPlus, 2)
 				case '-':
-					return l.makeSimpleToken(TOK_EQ_MINUS, 2)
+					return l.makeSimpleToken(token.EqMinus, 2)
 				case '*':
-					return l.makeSimpleToken(TOK_EQ_STAR, 2)
+					return l.makeSimpleToken(token.EqStar, 2)
 				case '/':
-					return l.makeSimpleToken(TOK_EQ_SLASH, 2)
+					return l.makeSimpleToken(token.EqSlash, 2)
 				case '%':
-					return l.makeSimpleToken(TOK_EQ_REM, 2)
+					return l.makeSimpleToken(token.EqRem, 2)
 				case '&':
-					return l.makeSimpleToken(TOK_EQ_AND, 2)
+					return l.makeSimpleToken(token.EqAnd, 2)
 				case '|':
-					return l.makeSimpleToken(TOK_EQ_OR, 2)
+					return l.makeSimpleToken(token.EqOr, 2)
 				case '^':
-					return l.makeSimpleToken(TOK_EQ_XOR, 2)
+					return l.makeSimpleToken(token.EqXor, 2)
 				}
 			}
 		}
-		return makeCharToken(TOK_EQ)
+		return makeCharToken(token.Eq)
 	}
 
-	Error(l.currentToken(), "Unexpected character: '%c' (ASCII %d)", c, c)
-	return l.makeToken(TOK_EOF, "", startCol, 0) // Unreachable
+	util.Error(l.currentToken(), "Unexpected character: '%c' (ASCII %d)", c, c)
+	return l.makeToken(token.EOF, "", startCol, 0) // Unreachable
 }
 
 // currentToken creates a token representing the current character for error reporting.
-func (l *Lexer) currentToken() Token {
-	return Token{
+func (l *Lexer) currentToken() token.Token {
+	return token.Token{
 		Type:      0, // Type doesn't matter for error reporting
 		Value:     string(l.peek()),
 		FileIndex: l.fileIndex,
@@ -308,7 +311,7 @@ func (l *Lexer) skipWhitespace() {
 			l.advance() // consume *
 			for {
 				if l.peek() == 0 {
-					Error(startTok, "Unterminated block comment")
+					util.Error(startTok, "Unterminated block comment")
 					return
 				}
 				if l.peek() == '*' && l.peekNext() == '/' {
@@ -320,9 +323,9 @@ func (l *Lexer) skipWhitespace() {
 			}
 			continue
 		}
-		if IsFeatureEnabled(FEAT_C_COMMENTS) {
+		if util.IsFeatureEnabled(util.FeatCComments) {
 			if c == '/' && l.peekNext() == '/' {
-				Warning(WARN_C_COMMENTS, l.currentToken(), "Using non-standard C-style '//' comment.")
+				util.Warn(util.WarnCComments, l.currentToken(), "Using non-standard C-style '//' comment.")
 				for l.peek() != '\n' && l.peek() != 0 {
 					l.advance()
 				}
@@ -333,7 +336,7 @@ func (l *Lexer) skipWhitespace() {
 	}
 }
 
-func (l *Lexer) identifierOrKeyword() Token {
+func (l *Lexer) identifierOrKeyword() token.Token {
 	startCol := l.column
 	startLine := l.line
 	startPos := l.pos
@@ -345,16 +348,16 @@ func (l *Lexer) identifierOrKeyword() Token {
 		l.advance()
 	}
 	value := string(l.source[startPos:l.pos])
-	tok := l.makeToken(TOK_IDENT, value, startCol, len(value))
+	tok := l.makeToken(token.Ident, value, startCol, len(value))
 	tok.Line = startLine
-	if tokType, isKeyword := keywordMap[value]; isKeyword {
+	if tokType, isKeyword := token.KeywordMap[value]; isKeyword {
 		tok.Type = tokType
 		tok.Value = "" // Keywords have no value
 	}
 	return tok
 }
 
-func (l *Lexer) numberLiteral() Token {
+func (l *Lexer) numberLiteral() token.Token {
 	startCol := l.column
 	startLine := l.line
 	startPos := l.pos
@@ -362,22 +365,22 @@ func (l *Lexer) numberLiteral() Token {
 		l.advance()
 	}
 	valueStr := string(l.source[startPos:l.pos])
-	tok := l.makeToken(TOK_NUMBER, "", startCol, len(valueStr))
+	tok := l.makeToken(token.Number, "", startCol, len(valueStr))
 	tok.Line = startLine
 
 	val, err := strconv.ParseUint(valueStr, 0, 64)
 	if err != nil {
 		if numErr, ok := err.(*strconv.NumError); ok && numErr.Err == strconv.ErrRange {
-			Warning(WARN_OVERFLOW, tok, "Integer constant is out of range.")
+			util.Warn(util.WarnOverflow, tok, "Integer constant is out of range.")
 		} else {
-			Error(tok, "Invalid number literal: %s", valueStr)
+			util.Error(tok, "Invalid number literal: %s", valueStr)
 		}
 	}
 	tok.Value = strconv.FormatInt(int64(val), 10)
 	return tok
 }
 
-func (l *Lexer) stringLiteral() Token {
+func (l *Lexer) stringLiteral() token.Token {
 	startCol := l.column
 	startLine := l.line
 	startPos := l.pos
@@ -387,10 +390,10 @@ func (l *Lexer) stringLiteral() Token {
 	for {
 		c := l.peek()
 		if c == 0 {
-			errTok := l.makeToken(TOK_STRING, "", startCol, l.pos-startPos)
+			errTok := l.makeToken(token.String, "", startCol, l.pos-startPos)
 			errTok.Line = startLine
-			Error(errTok, "Unterminated string literal")
-			return l.makeToken(TOK_EOF, "", l.column, 0)
+			util.Error(errTok, "Unterminated string literal")
+			return l.makeToken(token.EOF, "", l.column, 0)
 		}
 		if c == '"' {
 			l.advance() // consume closing "
@@ -398,17 +401,17 @@ func (l *Lexer) stringLiteral() Token {
 		}
 
 		errTok := l.currentToken()
-		if c == '\\' && IsFeatureEnabled(FEAT_C_ESCAPES) {
+		if c == '\\' && util.IsFeatureEnabled(util.FeatCEscapes) {
 			l.advance() // consume '\'
-			if !IsFeatureEnabled(FEAT_B_ESCAPES) { // Check if we are in a mode that should warn
-				Warning(WARN_C_ESCAPES, errTok, "Using C-style '\\' escape in string literal")
+			if !util.IsFeatureEnabled(util.FeatBEscapes) { // Check if we are in a mode that should warn
+				util.Warn(util.WarnCEscapes, errTok, "Using C-style '\\' escape in string literal")
 			}
 			val := l.decodeEscape('\\')
 			sb.WriteRune(rune(val))
-		} else if c == '*' && IsFeatureEnabled(FEAT_B_ESCAPES) {
+		} else if c == '*' && util.IsFeatureEnabled(util.FeatBEscapes) {
 			l.advance() // consume '*'
-			if IsFeatureEnabled(FEAT_C_ESCAPES) {
-				Warning(WARN_B_ESCAPES, errTok, "Using B-style '*' escape in string literal")
+			if util.IsFeatureEnabled(util.FeatCEscapes) {
+				util.Warn(util.WarnBEscapes, errTok, "Using B-style '*' escape in string literal")
 			}
 			val := l.decodeEscape('*')
 			sb.WriteRune(rune(val))
@@ -417,12 +420,12 @@ func (l *Lexer) stringLiteral() Token {
 			sb.WriteRune(c)
 		}
 	}
-	tok := l.makeToken(TOK_STRING, sb.String(), startCol, l.pos-startPos)
+	tok := l.makeToken(token.String, sb.String(), startCol, l.pos-startPos)
 	tok.Line = startLine
 	return tok
 }
 
-func (l *Lexer) charLiteral() Token {
+func (l *Lexer) charLiteral() token.Token {
 	startCol := l.column
 	startLine := l.line
 	startPos := l.pos
@@ -436,16 +439,16 @@ func (l *Lexer) charLiteral() Token {
 		c := l.peek()
 		errTok := l.currentToken()
 
-		if c == '\\' && IsFeatureEnabled(FEAT_C_ESCAPES) {
+		if c == '\\' && util.IsFeatureEnabled(util.FeatCEscapes) {
 			l.advance() // consume '\'
-			if !IsFeatureEnabled(FEAT_B_ESCAPES) {
-				Warning(WARN_C_ESCAPES, errTok, "Using C-style '\\' escape in character literal")
+			if !util.IsFeatureEnabled(util.FeatBEscapes) {
+				util.Warn(util.WarnCEscapes, errTok, "Using C-style '\\' escape in character literal")
 			}
 			val = l.decodeEscape('\\')
-		} else if c == '*' && IsFeatureEnabled(FEAT_B_ESCAPES) {
+		} else if c == '*' && util.IsFeatureEnabled(util.FeatBEscapes) {
 			l.advance() // consume '*'
-			if IsFeatureEnabled(FEAT_C_ESCAPES) {
-				Warning(WARN_B_ESCAPES, errTok, "Using B-style '*' escape in character literal")
+			if util.IsFeatureEnabled(util.FeatCEscapes) {
+				util.Warn(util.WarnBEscapes, errTok, "Using B-style '*' escape in character literal")
 			}
 			val = l.decodeEscape('*')
 		} else {
@@ -454,17 +457,17 @@ func (l *Lexer) charLiteral() Token {
 		}
 
 		charCount++
-		if charCount > 8 { // Assuming 64-bit words. TODO: We want fully UTF8 strings, but is this correct?
-			Warning(WARN_LONG_CHAR_CONST, errTok, "Multi-character constant may overflow word size")
+		if charCount > 8 { // Assuming 64-bit words.
+			util.Warn(util.WarnLongCharConst, errTok, "Multi-character constant may overflow word size")
 		}
 		word = (word << 8) | (val & 0xFF)
 	}
 
-	tok := l.makeToken(TOK_NUMBER, "", startCol, l.pos-startPos)
+	tok := l.makeToken(token.Number, "", startCol, l.pos-startPos)
 	tok.Line = startLine
 
 	if l.peek() != '\'' {
-		Error(tok, "Unterminated character literal")
+		util.Error(tok, "Unterminated character literal")
 	}
 	l.advance() // consume closing '
 
@@ -476,7 +479,7 @@ func (l *Lexer) decodeEscape(escapeChar rune) int64 {
 	c := l.peek()
 	errTok := l.currentToken()
 	if c == 0 {
-		Error(errTok, "Unterminated escape sequence")
+		util.Error(errTok, "Unterminated escape sequence")
 		return 0
 	}
 	l.advance() // consume char after escape
@@ -506,7 +509,7 @@ func (l *Lexer) decodeEscape(escapeChar rune) int64 {
 		case '?':
 			return '?'
 		default:
-			Warning(WARN_UNRECOGNIZED_ESCAPE, errTok, "Unrecognized escape sequence '\\%c'", c)
+			util.Warn(util.WarnUnrecognizedEscape, errTok, "Unrecognized escape sequence '\\%c'", c)
 			return int64(c)
 		}
 	} else { // B-style '*' escapes
@@ -532,7 +535,7 @@ func (l *Lexer) decodeEscape(escapeChar rune) int64 {
 		case '\'':
 			return '\''
 		default:
-			Warning(WARN_UNRECOGNIZED_ESCAPE, errTok, "Unrecognized escape sequence '*%c'", c)
+			util.Warn(util.WarnUnrecognizedEscape, errTok, "Unrecognized escape sequence '*%c'", c)
 			return int64(c)
 		}
 	}

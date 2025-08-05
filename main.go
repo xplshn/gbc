@@ -7,11 +7,40 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
+	"gbc/pkg/ast"
+	"gbc/pkg/codegen"
+	"gbc/pkg/lexer"
+	"gbc/pkg/parser"
+	"gbc/pkg/token"
+	"gbc/pkg/util"
+
 	"modernc.org/libqbe"
 )
+
+type linkerArgs []string
+type includePaths []string
+
+func (l *linkerArgs) String() string {
+	return strings.Join(*l, " ")
+}
+
+func (l *linkerArgs) Set(value string) error {
+	*l = append(*l, value)
+	return nil
+}
+
+func (i *includePaths) String() string {
+	return strings.Join(*i, ":")
+}
+
+func (i *includePaths) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
 
 func main() {
 	outFile := flag.String("o", "a.out", "Output file name.")
@@ -19,11 +48,18 @@ func main() {
 	wall := flag.Bool("Wall", false, "Enable most warnings.")
 	w_no_all := flag.Bool("Wno-all", false, "Disable all warnings.")
 	w_pedantic := flag.Bool("pedantic", false, "Issue all warnings demanded by the current B std.")
-	for _, wInfo := range warnings {
+
+	var linkerFlags linkerArgs
+	flag.Var(&linkerFlags, "L", "Pass argument to the linker")
+	var userIncludePaths includePaths
+	flag.Var(&userIncludePaths, "I", "Add a directory to the include path")
+	libRequest := flag.String("l", "", "Link with a library (e.g., -lb for library 'b')")
+
+	for _, wInfo := range util.Warnings {
 		flag.Bool("W"+wInfo.Name, false, "Enable '"+wInfo.Name+"' warning.")
 		flag.Bool("Wno-"+wInfo.Name, false, "Disable '"+wInfo.Name+"' warning.")
 	}
-	for _, fInfo := range features {
+	for _, fInfo := range util.Features {
 		flag.Bool("F"+fInfo.Name, false, "Enable '"+fInfo.Name+"' feature.")
 		flag.Bool("Fno-"+fInfo.Name, false, "Disable '"+fInfo.Name+"' feature.")
 	}
@@ -40,47 +76,46 @@ func main() {
 	applyStd(*std)
 
 	if *w_no_all {
-		setAllWarnings(false)
+		util.SetAllWarnings(false)
 	}
 	if *wall {
-		oWARN_C_COMMENTS := IsWarningEnabled(WARN_C_COMMENTS)
-		oWARN_C_OPS := IsWarningEnabled(WARN_C_OPS)
-		oWARN_B_OPS := IsWarningEnabled(WARN_B_OPS)
-		setAllWarnings(true)
-		SetWarning(WARN_C_COMMENTS, oWARN_C_COMMENTS)
-		SetWarning(WARN_C_OPS, oWARN_C_OPS)
-		SetWarning(WARN_B_OPS, oWARN_B_OPS)
+		oWARN_C_COMMENTS := util.IsWarningEnabled(util.WarnCComments)
+		oWARN_C_OPS := util.IsWarningEnabled(util.WarnCOps)
+		oWARN_B_OPS := util.IsWarningEnabled(util.WarnBOps)
+		util.SetAllWarnings(true)
+		util.SetWarning(util.WarnCComments, oWARN_C_COMMENTS)
+		util.SetWarning(util.WarnCOps, oWARN_C_OPS)
+		util.SetWarning(util.WarnBOps, oWARN_B_OPS)
 	}
 	if *w_pedantic {
-		SetWarning(WARN_PEDANTIC, true)
+		util.SetWarning(util.WarnPedantic, true)
 		applyStd(*std)
 	}
 
-	// Apply user-specified overrides
 	flag.Visit(func(f *flag.Flag) {
 		if strings.HasPrefix(f.Name, "W") && f.Name != "Wall" {
 			if strings.HasPrefix(f.Name, "Wno-") {
 				name := strings.TrimPrefix(f.Name, "Wno-")
-				if w, ok := warningMap[name]; ok {
-					SetWarning(w, false)
+				if w, ok := util.WarningMap[name]; ok {
+					util.SetWarning(w, false)
 				}
 			} else {
 				name := strings.TrimPrefix(f.Name, "W")
-				if w, ok := warningMap[name]; ok {
-					SetWarning(w, true)
+				if w, ok := util.WarningMap[name]; ok {
+					util.SetWarning(w, true)
 				}
 			}
 		}
 		if strings.HasPrefix(f.Name, "F") {
 			if strings.HasPrefix(f.Name, "Fno-") {
 				name := strings.TrimPrefix(f.Name, "Fno-")
-				if feat, ok := featureMap[name]; ok {
-					SetFeature(feat, false)
+				if feat, ok := util.FeatureMap[name]; ok {
+					util.SetFeature(feat, false)
 				}
 			} else {
 				name := strings.TrimPrefix(f.Name, "F")
-				if feat, ok := featureMap[name]; ok {
-					SetFeature(feat, true)
+				if feat, ok := util.FeatureMap[name]; ok {
+					util.SetFeature(feat, true)
 				}
 			}
 		}
@@ -88,25 +123,33 @@ func main() {
 
 	inputFiles := flag.Args()
 	if len(inputFiles) == 0 {
-		Error(Token{}, "no input files specified.")
+		util.Error(token.Token{}, "no input files specified.")
+	}
+
+	if *libRequest != "" {
+		libPath := findLibrary(*libRequest, userIncludePaths)
+		if libPath == "" {
+			util.Error(token.Token{}, "could not find library '%s'", *libRequest)
+		}
+		inputFiles = append(inputFiles, libPath)
 	}
 
 	fmt.Println("----------------------")
 
 	fmt.Printf("Tokenizing %d source file(s)...\n", len(inputFiles))
 	records, allTokens := readAndTokenizeFiles(inputFiles)
-	SetSourceFiles(records)
+	util.SetSourceFiles(records)
 
 	fmt.Println("Parsing tokens into AST...")
-	parser := NewParser(allTokens)
-	ast := parser.Parse()
+	p := parser.NewParser(allTokens)
+	astRoot := p.Parse()
 
 	fmt.Println("Constant folding...")
-	ast = FoldConstants(ast)
+	astRoot = ast.FoldConstants(astRoot)
 
 	fmt.Println("QBE Codegen...")
-	codegen := NewCodegenContext()
-	qbeIR, inlineAsm := codegen.Generate(ast)
+	cg := codegen.NewContext(runtime.GOARCH)
+	qbeIR, inlineAsm := cg.Generate(astRoot)
 
 	fmt.Println("Calling libqbe on our QBE IR...")
 	target := libqbe.DefaultTarget(runtime.GOOS, runtime.GOARCH)
@@ -114,20 +157,51 @@ func main() {
 	err := libqbe.Main(target, "input.ssa", strings.NewReader(qbeIR), &asmBuf, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n--- QBE Compilation Failed ---\nGenerated IR:\n%s\n", qbeIR)
-		Error(Token{}, "libqbe error: %v", err)
+		util.Error(token.Token{}, "libqbe error: %v", err)
 	}
 
 	fmt.Printf("Assembling and linking to create '%s'...\n", *outFile)
-	err = assembleAndLink(*outFile, asmBuf.String(), inlineAsm)
+	err = assembleAndLink(*outFile, asmBuf.String(), inlineAsm, linkerFlags)
 	if err != nil {
-		Error(Token{}, "assembler/linker failed: %v", err)
+		util.Error(token.Token{}, "assembler/linker failed: %v", err)
 	}
 
 	fmt.Println("----------------------")
 	fmt.Println("Compilation successful!")
 }
 
-func assembleAndLink(outFile, mainAsm, inlineAsm string) error {
+func findLibrary(libName string, userPaths []string) string {
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+
+	filenames := []string{
+		fmt.Sprintf("%s_%s_%s.b", libName, goarch, goos),
+		fmt.Sprintf("%s_%s.b", libName, goarch),
+		fmt.Sprintf("%s_%s.b", libName, goos),
+		fmt.Sprintf("%s.b", libName),
+	}
+
+	defaultPaths := []string{
+		"/usr/local/lib/gbc",
+		"/usr/lib/gbc",
+		"/lib/gbc",
+	}
+
+	searchPaths := append(userPaths, defaultPaths...)
+
+	for _, path := range searchPaths {
+		for _, fname := range filenames {
+			fullPath := filepath.Join(path, fname)
+			if _, err := os.Stat(fullPath); err == nil {
+				return fullPath
+			}
+		}
+	}
+
+	return ""
+}
+
+func assembleAndLink(outFile, mainAsm, inlineAsm string, linkerArgs []string) error {
 	mainAsmFile, err := os.CreateTemp("", "gbc-main-*.s")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file for main asm: %w", err)
@@ -138,17 +212,27 @@ func assembleAndLink(outFile, mainAsm, inlineAsm string) error {
 	}
 	mainAsmFile.Close()
 
-	inlineAsmFile, err := os.CreateTemp("", "gbc-inline-*.s")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file for inline asm: %w", err)
+	var inlineAsmFileName string
+	if inlineAsm != "" {
+		inlineAsmFile, err := os.CreateTemp("", "gbc-inline-*.s")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file for inline asm: %w", err)
+		}
+		defer os.Remove(inlineAsmFile.Name())
+		if _, err := inlineAsmFile.WriteString(inlineAsm); err != nil {
+			return fmt.Errorf("failed to write to temp file for inline asm: %w", err)
+		}
+		inlineAsmFile.Close()
+		inlineAsmFileName = inlineAsmFile.Name()
 	}
-	defer os.Remove(inlineAsmFile.Name())
-	if _, err := inlineAsmFile.WriteString(inlineAsm); err != nil {
-		return fmt.Errorf("failed to write to temp file for inline asm: %w", err)
-	}
-	inlineAsmFile.Close()
 
-	cmd := exec.Command("cc", "-s", "-static-pie", "-o", outFile, mainAsmFile.Name(), inlineAsmFile.Name())
+	ccArgs := []string{"-s", "-static-pie", "-o", outFile, mainAsmFile.Name()}
+	if inlineAsmFileName != "" {
+		ccArgs = append(ccArgs, inlineAsmFileName)
+	}
+	ccArgs = append(ccArgs, linkerArgs...)
+
+	cmd := exec.Command("cc", ccArgs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("cc command failed: %w\nOutput:\n%s", err, string(output))
@@ -157,29 +241,29 @@ func assembleAndLink(outFile, mainAsm, inlineAsm string) error {
 	return nil
 }
 
-func readAndTokenizeFiles(paths []string) ([]SourceFileRecord, []Token) {
-	var records []SourceFileRecord
-	var allTokens []Token
+func readAndTokenizeFiles(paths []string) ([]util.SourceFileRecord, []token.Token) {
+	var records []util.SourceFileRecord
+	var allTokens []token.Token
 
 	for i, path := range paths {
 		file, err := os.Open(path)
 		if err != nil {
-			Error(Token{FileIndex: -1}, "could not open file '%s': %v", path, err)
+			util.Error(token.Token{FileIndex: -1}, "could not open file '%s': %v", path, err)
 		}
 		defer file.Close()
 
 		content, err := io.ReadAll(file)
 		if err != nil {
-			Error(Token{FileIndex: -1}, "could not read file '%s': %v", path, err)
+			util.Error(token.Token{FileIndex: -1}, "could not read file '%s': %v", path, err)
 		}
 
 		runeContent := []rune(string(content))
-		records = append(records, SourceFileRecord{Name: path, Content: runeContent})
+		records = append(records, util.SourceFileRecord{Name: path, Content: runeContent})
 
-		lexer := NewLexer(runeContent, i)
+		l := lexer.NewLexer(runeContent, i)
 		for {
-			tok := lexer.Next()
-			if tok.Type == TOK_EOF {
+			tok := l.Next()
+			if tok.Type == token.EOF {
 				break
 			}
 			allTokens = append(allTokens, tok)
@@ -189,57 +273,45 @@ func readAndTokenizeFiles(paths []string) ([]SourceFileRecord, []Token) {
 	if len(paths) > 0 {
 		finalFileIndex = len(paths) - 1
 	}
-	allTokens = append(allTokens, Token{Type: TOK_EOF, FileIndex: finalFileIndex})
+	allTokens = append(allTokens, token.Token{Type: token.EOF, FileIndex: finalFileIndex})
 	return records, allTokens
 }
 
 func applyStd(stdName string) {
-	isPedantic := IsWarningEnabled(WARN_PEDANTIC)
+	isPedantic := util.IsWarningEnabled(util.WarnPedantic)
 
 	switch stdName {
 	case "B":
-		// Flexible B: enable modern features unless pedantic
-		SetFeature(FEAT_B_OPS, true)
-		SetFeature(FEAT_B_ESCAPES, true)
-		SetFeature(FEAT_C_OPS, !isPedantic)
-		SetFeature(FEAT_C_ESCAPES, !isPedantic)
-		SetFeature(FEAT_C_COMMENTS, !isPedantic)
-
-		// Warn about modern features when in B mode
-		SetWarning(WARN_C_OPS, true)
-		SetWarning(WARN_C_ESCAPES, true)
-		SetWarning(WARN_C_COMMENTS, true)
-		// Don't warn about B features
-		SetWarning(WARN_B_OPS, false)
-		SetWarning(WARN_B_ESCAPES, false)
-
-		// Strict B: disable non-standard features
-		SetFeature(FEAT_EXTRN, !isPedantic)
-		SetFeature(FEAT_ASM, !isPedantic)
+		util.SetFeature(util.FeatBOps, true)
+		util.SetFeature(util.FeatBEscapes, true)
+		util.SetFeature(util.FeatCOps, !isPedantic)
+		util.SetFeature(util.FeatCEscapes, !isPedantic)
+		util.SetFeature(util.FeatCComments, !isPedantic)
+		util.SetWarning(util.WarnCOps, true)
+		util.SetWarning(util.WarnCEscapes, true)
+		util.SetWarning(util.WarnCComments, true)
+		util.SetWarning(util.WarnBOps, false)
+		util.SetWarning(util.WarnBEscapes, false)
+		util.SetFeature(util.FeatExtrn, !isPedantic)
+		util.SetFeature(util.FeatAsm, !isPedantic)
 
 	case "Bx":
-		// Bx (Modern B): enable C-style features, disable old B-style features
-		SetFeature(FEAT_B_OPS, false)
-		SetFeature(FEAT_B_ESCAPES, false)
-
-		SetFeature(FEAT_C_OPS, true)
-		SetFeature(FEAT_C_ESCAPES, true)
-		SetFeature(FEAT_C_COMMENTS, true)
-
-		// Warn about historical B syntax when in Bx mode
-		SetWarning(WARN_B_OPS, true) // Won't really change anything because FEAT_B_OPS, FEAT_B_ESCAPES is disabled
-		SetWarning(WARN_B_ESCAPES, true)
-		// Don't warn about C-style features
-		SetWarning(WARN_C_OPS, false)
-		SetWarning(WARN_C_ESCAPES, false)
-		SetWarning(WARN_C_COMMENTS, false)
+		util.SetFeature(util.FeatBOps, false)
+		util.SetFeature(util.FeatBEscapes, false)
+		util.SetFeature(util.FeatCOps, true)
+		util.SetFeature(util.FeatCEscapes, true)
+		util.SetFeature(util.FeatCComments, true)
+		util.SetWarning(util.WarnBOps, true)
+		util.SetWarning(util.WarnBEscapes, true)
+		util.SetWarning(util.WarnCOps, false)
+		util.SetWarning(util.WarnCEscapes, false)
+		util.SetWarning(util.WarnCComments, false)
 
 	default:
-		Error(Token{}, "unsupported standard '%s'. Supported: 'B', 'Bx'.", stdName)
+		util.Error(token.Token{}, "unsupported standard '%s'. Supported: 'B', 'Bx'.", stdName)
 	}
 }
 
-// Help page formatting woes
 func printSection(title string) {
 	fmt.Fprintf(os.Stderr, "\n  %s\n", title)
 }
@@ -261,7 +333,7 @@ func printListItem(name, desc string, enabled bool) {
 	}
 	fmt.Fprintf(os.Stderr, "      %-20s %s %s\n", name, descPadded, state)
 }
-// printHelp displays the compiler's command-line help information.
+
 func printHelp() {
 	fmt.Fprintf(os.Stderr, "\nCopyright (c) 2025: xplshn and contributors\n")
 	fmt.Fprintf(os.Stderr, "For more details refer to <https://github.com/xplshn/gbc>\n")
@@ -274,6 +346,9 @@ func printHelp() {
 
 	printSection("Options")
 	printItem("-o <file>", "Place the output into <file>.")
+	printItem("-I <path>", "Add a directory to the include path.")
+	printItem("-L <arg>", "Pass an argument to the linker.")
+	printItem("-l<lib>", "Link with a library (e.g., -lb for 'b').")
 	printItem("-h, --help", "Display this information.")
 	printItem("-std=<std>", "Specify language standard (B, Bx). Default: Bx")
 	printItem("-pedantic", "Issue all warnings demanded by the current B std.")
@@ -284,8 +359,8 @@ func printHelp() {
 	printItem("-W<warning>", "Enable a specific warning.")
 	printItem("-Wno-<warning>", "Disable a specific warning.")
 	printListHeader("warnings")
-	for i := WarningType(0); i < WARN_COUNT; i++ {
-		info := warnings[i]
+	for i := util.Warning(0); i < util.WarnCount; i++ {
+		info := util.Warnings[i]
 		printListItem(info.Name, info.Description, info.Enabled)
 	}
 
@@ -293,8 +368,8 @@ func printHelp() {
 	printItem("-F<feature>", "Enable a specific feature.")
 	printItem("-Fno-<feature>", "Disable a specific feature.")
 	printListHeader("features")
-	for i := FeatureType(0); i < FEAT_COUNT; i++ {
-		info := features[i]
+	for i := util.Feature(0); i < util.FeatCount; i++ {
+		info := util.Features[i]
 		printListItem(info.Name, info.Description, info.Enabled)
 	}
 
