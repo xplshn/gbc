@@ -63,10 +63,13 @@ For more details refer to <https://github.com/xplshn/gbc>
 ```
 
 #### Progress Report:
-- Capable of compiling donut.b
-- Capable of compiling snake.b, but collisions for some reason do not work against the apple
 - Capable of passing all tests
-- Most examples work, but some fail to work as expected, with slight differences in behavior - I'm working on fixing this issue
+- Capable of compiling donut.b
+- Capable of compiling snake.b
+- Capable of compiling raylib.b (just remember to link with Raylib via `-L -lraylib`)
+- Capable of compiling langtons_ants.b
+- Capable of compiling brainfck.b
+- Etc, these are just the most impressive examples
 
 The project is currently in its infancy, and the long-term goals are very ambitious. This is the current roadmap:
 
