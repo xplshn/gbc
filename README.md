@@ -8,7 +8,7 @@
 This compiler is a project aiming to make a valid B compiler, with _optional_ extensions for C interoperability, and a modules system like Go's
 
 ```
-]~/Documents/TrulyMine/gbc@ ./gbc --help
+]~/Documents/TrulyMine/gbc@ ./gbc -h
 
 Copyright (c) 2025: xplshn and contributors
 For more details refer to <https://github.com/xplshn/gbc>
@@ -21,6 +21,9 @@ For more details refer to <https://github.com/xplshn/gbc>
 
   Options
     -o <file>              Place the output into <file>.
+    -I <path>              Add a directory to the include path.
+    -L <arg>               Pass an argument to the linker.
+    -l<lib>                Link with a B library (e.g., -lb for 'b').
     -h, --help             Display this information.
     -std=<std>             Specify language standard (B, Bx). Default: Bx
     -pedantic              Issue all warnings demanded by the current B std.
@@ -56,7 +59,7 @@ For more details refer to <https://github.com/xplshn/gbc>
       c-ops                Recognize C-style assignment operators like '+='                            [x]
       c-comments           Recognize C-style '//' comments                                             [x]
 
-]~/Documents/TrulyMine/gbc@ 
+]~/Documents/TrulyMine/gbc@  
 ```
 
 #### Progress Report:
