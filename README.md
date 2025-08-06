@@ -94,8 +94,8 @@ The project is currently in its infancy, and the long-term goals are very ambiti
 
 ---
 
-##### Acknowledgments
-- modernc.org/libqbe: A pure-go convertion of QBE, this allows `gbc` to be self-contained
+#### Acknowledgments
+
 ##### References
 - https://research.swtch.com/b-lang
 - https://www.nokia.com/bell-labs/about/dennis-m-ritchie/kbman.html
@@ -111,6 +111,7 @@ The project is currently in its infancy, and the long-term goals are very ambiti
 
 ###### Cool stuff used by this project:
 - [QBE](https://c9x.me/compile/): The QBE compiler backend
+- [modernc.org/libqbe](modernc.org/libqbe): A pure-go convertion of QBE, this allows `gbc` to be self-contained
 
 ---
 
