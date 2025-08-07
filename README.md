@@ -62,7 +62,7 @@ For more details refer to <https://github.com/xplshn/gbc>
 ]~/Documents/TrulyMine/gbc@  
 ```
 
-#### Progress Report:
+### Progress Report:
 - Capable of passing all tests
 - Capable of compiling donut.b
 - Capable of compiling snake.b
@@ -70,6 +70,14 @@ For more details refer to <https://github.com/xplshn/gbc>
 - Capable of compiling langtons_ants.b
 - Capable of compiling brainfck.b
 - Etc, these are just the most impressive examples
+- I added a completely opt-in type system. It uses type first declarations like C, and uses the Go type names. (W.I.P. Commit gonna be up soon, I had to change a lot of stuff) (can also be used with strict B, the syntax is backwards compatible: -std=B -Ftyped)
+
+## Demo
+<img width="1920" height="1080" alt="RayLib B demo" src="https://github.com/user-attachments/assets/ed941fc1-0754-4978-98fb-13ff2774b880" />
+<img width="1920" height="1080" alt="Snake.b" src="https://github.com/user-attachments/assets/d235166b-06c3-4849-859f-1e97f44e15af" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/07b79046-75cd-4014-a870-54a10f6853bd" />
+
+###### TODO: GIFs showcasing things properly
 
 The project is currently in its infancy, and the long-term goals are very ambitious. This is the current roadmap:
 
