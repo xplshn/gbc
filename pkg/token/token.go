@@ -3,14 +3,17 @@ package token
 // Type represents the type of a lexical token.
 type Type int
 
+// The list of all lexical tokens.
 const (
-	// Meta
-	EOF Type = iota // End of file/input
+	// Meta tokens
+	EOF Type = iota
+	Comment
+	Directive // '// [b]: ...'
 
 	// Literals
-	Ident  // Identifier, e.g., my_var
-	Number // Numeric literal, e.g., 123, 0x1A, 'a'
-	String // String literal, e.g., "hello"
+	Ident  // main
+	Number // 123, 0x7b, 0173
+	String // "A saucerful of secrets"
 
 	// Keywords
 	Auto
@@ -24,7 +27,31 @@ const (
 	Case
 	Default
 	Break
-	Asm
+	Continue
+	Asm // `__asm__`
+
+	// Bx Type System Keywords
+	Void
+	TypeKeyword // 'type'
+	Struct
+	Const
+	Bool
+	Byte
+	Int
+	Uint
+	Int8
+	Uint8
+	Int16
+	Uint16
+	Int32
+	Uint32
+	Int64
+	Uint64
+	Float
+	Float32
+	Float64
+	StringKeyword // 'string'
+	Any           // For untyped, and symbols marked explicitely with any()
 
 	// Punctuation
 	LParen   // (
@@ -38,30 +65,33 @@ const (
 	Colon    // :
 	Question // ?
 	Dots     // ...
+	Dot      // .
 
 	// --- Operator Groups ---
+
 	// Assignment Operators
 	Eq      // =
-	PlusEq  // +=
-	MinusEq // -=
-	StarEq  // *=
-	SlashEq // /=
-	RemEq   // %=
-	AndEq   // &=
-	OrEq    // |=
-	XorEq   // ^=
-	ShlEq   // <<=
-	ShrEq   // >>=
-	EqPlus  // =+
-	EqMinus // =-
-	EqStar  // =*
-	EqSlash // =/
-	EqRem   // =%
-	EqAnd   // =&
-	EqOr    // =|
-	EqXor   // =^
-	EqShl   // =<<
-	EqShr   // =>>
+	Define  // :=
+	PlusEq  // += (C-style)
+	MinusEq // -= (C-style)
+	StarEq  // *= (C-style)
+	SlashEq // /= (C-style)
+	RemEq   // %= (C-style)
+	AndEq   // &= (C-style)
+	OrEq    // |= (C-style)
+	XorEq   // ^= (C-style)
+	ShlEq   // <<= (C-style)
+	ShrEq   // >>= (C-style)
+	EqPlus  // =+ (B-style)
+	EqMinus // =- (B-style)
+	EqStar  // =* (B-style)
+	EqSlash // =/ (B-style)
+	EqRem   // =% (B-style)
+	EqAnd   // =& (B-style)
+	EqOr    // =| (B-style)
+	EqXor   // =^ (B-style)
+	EqShl   // =<< (B-style)
+	EqShr   // =>> (B-style)
 
 	// Binary Operators
 	Plus
@@ -80,6 +110,8 @@ const (
 	Gt
 	Gte
 	Lte
+	AndAnd // &&
+	OrOr   // ||
 
 	// Unary & Postfix Operators
 	Not        // !
@@ -88,29 +120,50 @@ const (
 	Dec        // --
 )
 
-// KeywordMap maps keyword strings to their corresponding Type.
+// KeywordMap maps keyword strings to their corresponding token Type
 var KeywordMap = map[string]Type{
-	"auto":    Auto,
-	"extrn":   Extrn,
-	"if":      If,
-	"else":    Else,
-	"while":   While,
-	"return":  Return,
-	"goto":    Goto,
-	"switch":  Switch,
-	"case":    Case,
-	"default": Default,
-	"break":   Break,
-	"__asm__": Asm,
+	"auto":     Auto,
+	"if":       If,
+	"else":     Else,
+	"while":    While,
+	"return":   Return,
+	"goto":     Goto,
+	"switch":   Switch,
+	"case":     Case,
+	"default":  Default,
+	"extrn":    Extrn,
+	"__asm__":  Asm,
+	"break":    Break,
+	"continue": Continue,
+	"void":     Void,
+	"type":     TypeKeyword,
+	"struct":   Struct,
+	"const":    Const,
+	"bool":     Bool,
+	"byte":     Byte,
+	"int":      Int,
+	"uint":     Uint,
+	"int8":     Int8,
+	"uint8":    Uint8,
+	"int16":    Int16,
+	"uint16":   Uint16,
+	"int32":    Int32,
+	"uint32":   Uint32,
+	"int64":    Int64,
+	"uint64":   Uint64,
+	"float":    Float,
+	"float32":  Float32,
+	"float64":  Float64,
+	"string":   StringKeyword,
+	"any":      Any,
 }
 
-// Token represents a single lexical unit from the source code.
-// It contains the type of the token, its value (for literals), and its position.
+// Token represents a single lexical unit from the source code
 type Token struct {
 	Type      Type
-	Value     string // Value for literals (string, number, ident)
-	FileIndex int    // Index into the global sourceFiles slice
-	Line      int    // Line number where the token starts
-	Column    int    // Column number where the token starts
-	Len       int    // Length of the token text in the source
+	Value     string
+	FileIndex int
+	Line      int
+	Column    int
+	Len       int
 }

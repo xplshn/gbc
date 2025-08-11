@@ -6,10 +6,10 @@ main() {
     W = 5;
     H = 4;
 
-    auto matrix_data[20]; // H * W = 4 * 5 = 20 words // :3
+    auto matrix_data 20; // H * W = 4 * 5 = 20 words // :3
 
     // Allocate an array of pointers for the rows
-    auto matrix[4];
+    auto matrix 4;
 
     // Set row pointers to point into the data block
     i = 0;

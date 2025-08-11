@@ -1,0 +1,25 @@
+{
+  "binary_path": "/tmp/gtest-3705884394/11f281a74d8694ba",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nQBE Codegen...\nCalling libqbe on our QBE IR...\nAssembling and linking to create '/tmp/gtest-3705884394/11f281a74d8694ba'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv'\n",
+    "exitCode": 0,
+    "duration": 62524267,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "09876543210123456789009887654321012345678900987654321098765432101234567890098876543210123456789009876543210\n"
+      ],
+      "result": {
+        "stdout": "Simple K-V Store. (s key val, g key, p, q)\n",
+        "stderr": "",
+        "exitCode": 255,
+        "duration": 660206,
+        "timed_out": false
+      }
+    }
+  ]
+}

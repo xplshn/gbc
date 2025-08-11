@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-3087621747/f6bfb35d69b7af1",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nQBE Codegen...\nCalling libqbe on our QBE IR...\nAssembling and linking to create '/tmp/gtest-3087621747/f6bfb35d69b7af1'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv'\n",
+    "exitCode": 0,
+    "duration": 58934128,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "09876543210123456789009887654321012345678900987654321098765432101234567890098876543210123456789009876543210\n"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 480603,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "098765432101234567890098876543210123456789009876543210\n"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 439486,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 388710,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 345615,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 346734,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 340355,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 332373,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 346248,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 342933,
+        "timed_out": false
+      }
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 // -*- mode: simpc -*-
+// [b]: requires: -C linker_args='-lraylib'
 
 // To compile this example you need to download raylib from https://github.com/raysan5/raylib/releases
 // Than pass appropriate linker flags to the b compiler.

@@ -1,0 +1,113 @@
+// Commands:
+// s <key> <value>   - Store a key-value pair
+// g <key>           - Get and print the value for a key
+// p                 - Print the entire table
+// q                 - Quit
+//
+
+extrn putchar, getchar, printf, scanf, strlen, strcpy, strcmp, malloc;
+
+int TABLE_SIZE = 101;
+
+type struct Entry {
+    byte* key;
+    byte* value;
+    Entry* next;
+};
+
+Entry* table[TABLE_SIZE];
+
+int hash(key byte*) {
+    result := 0;
+    i := 0;
+    while (key[i] != 0) {
+        result = (31 * result + key[i]);
+        i = i + 1;
+    }
+    // Ensure the result is non-negative before the final modulo.
+    return ((result % TABLE_SIZE + TABLE_SIZE) % TABLE_SIZE);
+}
+
+void set(key, value byte*) {
+    index := hash(key);
+    entry := table[index];
+
+    while (entry != 0) {
+        if (strcmp(entry.key, key) == 0) {
+            strcpy(entry.value, value);
+            return;
+        }
+        entry = entry.next;
+    }
+
+    new_entry := malloc(sizeof(Entry));
+    key_copy := malloc(strlen(key) + 1);
+    strcpy(key_copy, key);
+
+    value_copy := malloc(strlen(value) + 1);
+    strcpy(value_copy, value);
+
+    new_entry.key = key_copy;
+    new_entry.value = value_copy;
+    new_entry.next = table[index];
+
+    table[index] = new_entry;
+}
+
+byte* get(key byte*) {
+    index := hash(key);
+    entry := table[index];
+
+    while (entry != 0) {
+        if (strcmp(entry.key, key) == 0) {
+            return (entry.value);
+        }
+        entry = (entry.next);
+    }
+
+    return (0);
+}
+
+void print_table() {
+    i := 0;
+    while (i < TABLE_SIZE) {
+        entry := table[i];
+        while (entry != 0) {
+            // Not nil
+            if (entry.key != 0 && entry.value != 0) {
+                printf("Key: %s, Value: %s\n", entry.key, entry.value);
+            }
+            entry = entry.next;
+        }
+        i = i + 1;
+    }
+}
+
+void main() {
+    printf("Simple K-V Store. (s key val, g key, p, q)\n");
+    byte cmd[128];
+    byte key[128];
+    byte val[128];
+
+    while (1) {
+        n := scanf("%s", cmd);
+        if (n != 1) break;
+
+        if (strcmp(cmd, "s") == 0) {
+            scanf("%s %s", key, val);
+            set(key, val);
+        } else if (strcmp(cmd, "g") == 0) {
+            scanf("%s", key);
+            res := get(key);
+            if (res != 0) {
+                printf("=> %s\n", res);
+            } else {
+                printf("Key not found.\n");
+            }
+        } else if (strcmp(cmd, "p") == 0) {
+            print_table();
+        } else if (strcmp(cmd, "q") == 0) {
+            break;
+        }
+    }
+}

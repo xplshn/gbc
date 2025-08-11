@@ -1,0 +1,51 @@
+// [b]: requires: -pedantic -std=Bx
+
+extrn puts;
+
+// Test implicit global declaration
+global_implicit = 10;
+
+// Test explicit type-inferred global declaration
+auto global_auto = 20;
+
+// Test multi-declaration global
+auto global_multi_1, global_multi_2 = 30, 40;
+
+main() {
+    auto local_auto;
+    local_auto = 50;
+
+    // Test short declaration
+    local_short := 60;
+
+    // Test multi-short declaration
+    local_multi_short_1, local_multi_short_2 := 70, 80;
+
+    if (global_implicit != 10) {
+        puts("FAIL: global_implicit");
+        return (1);
+    }
+    if (global_auto != 20) {
+        puts("FAIL: global_auto");
+        return (1);
+    }
+    if (global_multi_1 != 30 || global_multi_2 != 40) {
+        puts("FAIL: global_multi");
+        return (1);
+    }
+    if (local_auto != 50) {
+        puts("FAIL: local_auto");
+        return (1);
+    }
+    if (local_short != 60) {
+        puts("FAIL: local_short");
+        return (1);
+    }
+    if (local_multi_short_1 != 70 || local_multi_short_2 != 80) {
+        puts("FAIL: local_multi_short");
+        return (1);
+    }
+
+    puts("PASS: All Bx declaration syntax seems to work.");
+    return (0);
+}
