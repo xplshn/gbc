@@ -70,7 +70,8 @@ For more details refer to <https://github.com/xplshn/gbc>
 - Capable of compiling langtons_ants.b
 - Capable of compiling brainfck.b
 - Etc, these are just the most impressive examples
-- I added a completely opt-in type system. It uses type first declarations like C, and uses the Go type names. (W.I.P. Commit gonna be up soon, I had to change a lot of stuff) (can also be used with strict B, the syntax is backwards compatible: -std=B -Ftyped)
+- I added a completely opt-in type system. It uses type first declarations like C, and uses the Go type names. (can also be used with strict B via `-std=B -Ftyped`, the syntax is backwards compatible. Its so reliable it comes enabled by default.)
+- `gbc` will warn about poorly written code. TODO: Convert these warnings into annotations that offer suggestions.
 
 ## Demo
 <img width="1920" height="1080" alt="RayLib B demo" src="https://github.com/user-attachments/assets/ed941fc1-0754-4978-98fb-13ff2774b880" />
