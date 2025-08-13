@@ -1,4 +1,5 @@
-**/*.b  linguist-language=C linguist-display-name="B" linguist-hex-color="#6b0015"
+**/*.b  linguist-language=C linguist-display-name="B"  linguist-hex-color="#6b0015"
+**/*.bx linguist-language=C linguist-display-name="Bx" linguist-hex-color="#550000"
 **/*.sh linguist-language=Shell linguist-display-name="Shell"
 pgit-blacklist="Modula-2"
 pgit-blacklist="XML"
