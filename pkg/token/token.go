@@ -1,19 +1,17 @@
 package token
 
-// Type represents the type of a lexical token.
 type Type int
 
-// The list of all lexical tokens.
 const (
-	// Meta tokens
+	// Meta
 	EOF Type = iota
 	Comment
-	Directive // '// [b]: ...'
+	Directive
 
 	// Literals
-	Ident  // main
-	Number // 123, 0x7b, 0173
-	String // "A saucerful of secrets"
+	Ident
+	Number
+	String
 
 	// Keywords
 	Auto
@@ -30,11 +28,13 @@ const (
 	Continue
 	Asm // `__asm__`
 
-	// Bx Type System Keywords
-	Void
+	// Bx Type System Keywords that are not types themselves
 	TypeKeyword // 'type'
 	Struct
 	Const
+
+	// Bx Type System Keywords that ARE types
+	Void
 	Bool
 	Byte
 	Int
@@ -51,47 +51,45 @@ const (
 	Float32
 	Float64
 	StringKeyword // 'string'
-	Any           // For untyped, and symbols marked explicitely with any()
+	Any
 
 	// Punctuation
-	LParen   // (
-	RParen   // )
-	LBrace   // {
-	RBrace   // }
-	LBracket // [
-	RBracket // ]
-	Semi     // ;
-	Comma    // ,
-	Colon    // :
-	Question // ?
-	Dots     // ...
-	Dot      // .
-
-	// --- Operator Groups ---
+	LParen
+	RParen
+	LBrace
+	RBrace
+	LBracket
+	RBracket
+	Semi
+	Comma
+	Colon
+	Question
+	Dots
+	Dot
 
 	// Assignment Operators
-	Eq      // =
-	Define  // :=
-	PlusEq  // += (C-style)
-	MinusEq // -= (C-style)
-	StarEq  // *= (C-style)
-	SlashEq // /= (C-style)
-	RemEq   // %= (C-style)
-	AndEq   // &= (C-style)
-	OrEq    // |= (C-style)
-	XorEq   // ^= (C-style)
-	ShlEq   // <<= (C-style)
-	ShrEq   // >>= (C-style)
-	EqPlus  // =+ (B-style)
-	EqMinus // =- (B-style)
-	EqStar  // =* (B-style)
-	EqSlash // =/ (B-style)
-	EqRem   // =% (B-style)
-	EqAnd   // =& (B-style)
-	EqOr    // =| (B-style)
-	EqXor   // =^ (B-style)
-	EqShl   // =<< (B-style)
-	EqShr   // =>> (B-style)
+	Eq
+	Define
+	PlusEq
+	MinusEq
+	StarEq
+	SlashEq
+	RemEq
+	AndEq
+	OrEq
+	XorEq
+	ShlEq
+	ShrEq
+	EqPlus
+	EqMinus
+	EqStar
+	EqSlash
+	EqRem
+	EqAnd
+	EqOr
+	EqXor
+	EqShl
+	EqShr
 
 	// Binary Operators
 	Plus
@@ -110,17 +108,16 @@ const (
 	Gt
 	Gte
 	Lte
-	AndAnd // &&
-	OrOr   // ||
+	AndAnd
+	OrOr
 
 	// Unary & Postfix Operators
-	Not        // !
-	Complement // ~
-	Inc        // ++
-	Dec        // --
+	Not
+	Complement
+	Inc
+	Dec
 )
 
-// KeywordMap maps keyword strings to their corresponding token Type
 var KeywordMap = map[string]Type{
 	"auto":     Auto,
 	"if":       If,
@@ -158,7 +155,6 @@ var KeywordMap = map[string]Type{
 	"any":      Any,
 }
 
-// Token represents a single lexical unit from the source code
 type Token struct {
 	Type      Type
 	Value     string

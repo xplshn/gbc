@@ -821,8 +821,17 @@ func (ctx *Context) codegenExpr(node *ast.Node) (result, predLabel string, termi
 			return sym.QbeName, startBlockLabel, false
 		}
 
-		if sym.Type == symFunc || sym.Type == symExtrn {
+		switch sym.Type {
+		case symFunc:
 			return sym.QbeName, startBlockLabel, false
+		case symExtrn:
+			isCall := node.Parent != nil && node.Parent.Type == ast.FuncCall && node.Parent.Data.(ast.FuncCallNode).FuncExpr == node
+			if isCall {
+				return sym.QbeName, startBlockLabel, false
+			} else {
+				// It's an external variable (e.g., stderr), which is a pointer. Load its value.
+				return ctx.genLoad(sym.QbeName, sym.BxType), startBlockLabel, false
+			}
 		}
 
 		isArr := sym.IsVector || (sym.BxType != nil && sym.BxType.Kind == ast.TYPE_ARRAY)

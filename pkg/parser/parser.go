@@ -1,5 +1,3 @@
-// Package parser is responsible for constructing an Abstract Syntax Tree (AST)
-// from a stream of tokens provided by the lexer
 package parser
 
 import (
@@ -13,7 +11,6 @@ import (
 	"github.com/xplshn/gbc/pkg/util"
 )
 
-// Parser holds the state for the parsing process
 type Parser struct {
 	tokens      []token.Token
 	pos         int
@@ -24,7 +21,6 @@ type Parser struct {
 	typeNames   map[string]bool
 }
 
-// NewParser creates and initializes a new Parser from a token stream
 func NewParser(tokens []token.Token, cfg *config.Config) *Parser {
 	p := &Parser{
 		tokens:      tokens,
@@ -36,7 +32,6 @@ func NewParser(tokens []token.Token, cfg *config.Config) *Parser {
 		p.current = p.tokens[0]
 	}
 
-	// Pre-populate type names with built-in types if the type system is enabled
 	if p.isTypedPass {
 		for keyword, tokType := range token.KeywordMap {
 			if tokType >= token.Void && tokType <= token.Any {
@@ -44,11 +39,8 @@ func NewParser(tokens []token.Token, cfg *config.Config) *Parser {
 			}
 		}
 	}
-
 	return p
 }
-
-// --- Parser Helpers ---
 
 func (p *Parser) advance() {
 	if p.pos < len(p.tokens) {
@@ -64,7 +56,7 @@ func (p *Parser) peek() token.Token {
 	if p.pos+1 < len(p.tokens) {
 		return p.tokens[p.pos+1]
 	}
-	return p.tokens[len(p.tokens)-1] // Return EOF token
+	return p.tokens[len(p.tokens)-1]
 }
 
 func (p *Parser) check(tokType token.Type) bool {
@@ -109,9 +101,6 @@ func isLValue(node *ast.Node) bool {
 	}
 }
 
-// --- Main Parsing Logic ---
-
-// Parse is the entry point for the parser. It constructs the AST
 func (p *Parser) Parse() *ast.Node {
 	var stmts []*ast.Node
 	tok := p.current
@@ -123,7 +112,6 @@ func (p *Parser) Parse() *ast.Node {
 		}
 
 		stmt := p.parseTopLevel()
-
 		if stmt != nil {
 			if stmt.Type == ast.MultiVarDecl {
 				stmts = append(stmts, stmt.Data.(ast.MultiVarDeclNode).Decls...)
@@ -168,7 +156,7 @@ func (p *Parser) parseTopLevel() *ast.Node {
 		peekTok := p.peek()
 
 		if peekTok.Type == token.LParen {
-			p.advance() // Consume identifier
+			p.advance()
 			stmt = p.parseFuncDecl(nil, identTok)
 		} else if peekTok.Type == token.Asm {
 			p.advance()
@@ -184,11 +172,9 @@ func (p *Parser) parseTopLevel() *ast.Node {
 		if p.isTypedPass && (p.isBuiltinType(currentTok) || p.check(token.Const)) {
 			stmt = p.parseTypedVarOrFuncDecl(true)
 		} else {
-			// Attempt to parse a top-level expression statement (like a function call for pre-main execution)
 			stmt = p.parseExpr()
 			if stmt != nil {
 				if stmt.Type == ast.FuncCall {
-					// This is a top-level function call, which in B is a function declaration with an empty body
 					funcCallData := stmt.Data.(ast.FuncCallNode)
 					if funcCallData.FuncExpr.Type == ast.Ident {
 						funcName := funcCallData.FuncExpr.Data.(ast.IdentNode).Name
@@ -202,7 +188,6 @@ func (p *Parser) parseTopLevel() *ast.Node {
 			}
 		}
 	}
-
 	return stmt
 }
 
@@ -213,7 +198,6 @@ func (p *Parser) isBxDeclarationAhead() bool {
 	if p.check(token.Auto) {
 		p.advance()
 	}
-
 	if !p.check(token.Ident) {
 		return false
 	}
@@ -224,33 +208,21 @@ func (p *Parser) isBxDeclarationAhead() bool {
 		}
 		p.advance()
 	}
-
-	if p.check(token.Eq) && p.cfg.IsFeatureEnabled(config.FeatBxDeclarations) {
-		return true
-	}
-	if p.check(token.Define) && p.cfg.IsFeatureEnabled(config.FeatShortDecl) {
-		return true
-	}
-
-	return false
+	return p.check(token.Eq) || p.check(token.Define)
 }
 
 func (p *Parser) isBuiltinType(tok token.Token) bool {
 	return tok.Type >= token.Void && tok.Type <= token.Any
 }
 
-// --- Statement Parsing ---
-
 func (p *Parser) parseStmt() *ast.Node {
 	tok := p.current
 
-	// Check for a label definition ("pinkFloyd:")
 	isLabelAhead := false
 	if p.peek().Type == token.Colon {
 		if p.check(token.Ident) {
 			isLabelAhead = true
 		} else {
-			// Check if the current token is any keyword
 			for _, kwType := range token.KeywordMap {
 				if p.check(kwType) {
 					isLabelAhead = true
@@ -265,7 +237,6 @@ func (p *Parser) parseStmt() *ast.Node {
 		if p.check(token.Ident) {
 			labelName = p.current.Value
 		} else {
-			// Find the keyword string for the current token type
 			for kw, typ := range token.KeywordMap {
 				if p.current.Type == typ {
 					labelName = kw
@@ -276,7 +247,6 @@ func (p *Parser) parseStmt() *ast.Node {
 		p.advance() // consume label name
 		p.advance() // consume ':'
 		if p.check(token.RBrace) {
-			// Handle empty labeled statement like `label: }`
 			return ast.NewLabel(tok, labelName, ast.NewBlock(p.current, nil, true))
 		}
 		return ast.NewLabel(tok, labelName, p.parseStmt())
@@ -334,12 +304,10 @@ func (p *Parser) parseStmt() *ast.Node {
 		return ast.NewDefault(tok, body)
 	case p.match(token.Goto):
 		var labelName string
-		// Check if the label is an identifier
 		if p.check(token.Ident) {
 			labelName = p.current.Value
 			p.advance()
 		} else {
-			// Check if the label is a keyword
 			isKeyword := false
 			for kw, typ := range token.KeywordMap {
 				if p.current.Type == typ {
@@ -350,7 +318,6 @@ func (p *Parser) parseStmt() *ast.Node {
 			}
 			if !isKeyword {
 				util.Error(p.current, "Expected label name after 'goto'.")
-				// Synchronize to the next semicolon
 				for !p.check(token.Semi) && !p.check(token.EOF) {
 					p.advance()
 				}
@@ -368,7 +335,7 @@ func (p *Parser) parseStmt() *ast.Node {
 		var expr *ast.Node
 		if !p.check(token.Semi) {
 			p.expect(token.LParen, "Expected '(' after 'return' with value.")
-			if !p.check(token.RParen) { // Handles `return()` which is valid for returning 0
+			if !p.check(token.RParen) {
 				expr = p.parseExpr()
 			}
 			p.expect(token.RParen, "Expected ')' after return value.")
@@ -432,8 +399,6 @@ func (p *Parser) parseBlockStmt() *ast.Node {
 	return ast.NewBlock(tok, stmts, false)
 }
 
-// --- Declaration Parsing ---
-
 func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 	declTok := p.current
 	if hasAuto {
@@ -461,8 +426,6 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 	}
 
 	if op != 0 {
-		// This branch handles Bx-style declarations that MUST be initialized
-		// e.g., `auto x = 1` or `x := 1`
 		for {
 			inits = append(inits, p.parseAssignmentExpr())
 			if !p.match(token.Comma) {
@@ -473,9 +436,7 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 			util.Error(declTok, "Mismatched number of variables and initializers (%d vs %d)", len(names), len(inits))
 		}
 	} else {
-		// This branch handles declarations that MIGHT be uninitialized
-		// e.g., `auto x;` which is B syntax
-		if p.cfg.IsFeatureEnabled(config.FeatStrictDecl) || !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
+		if !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
 			util.Error(declTok, "Uninitialized declaration is not allowed in this mode")
 		}
 	}
@@ -487,8 +448,6 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 			initList = append(initList, inits[i])
 		}
 		name := nameNode.Data.(ast.IdentNode).Name
-		// Mark as a Bx-style `auto` or `:=` declaration by setting isDefine
-		// The type checker will infer the type later
 		decls = append(decls, ast.NewVarDecl(nameNode.Tok, name, ast.TypeUntyped, initList, nil, false, false, isDefine || op == token.Eq))
 	}
 
@@ -514,11 +473,28 @@ func (p *Parser) parseUntypedDeclarationList(declType token.Type, declTok token.
 		return ast.NewExtrnDecl(declTok, names)
 	}
 
-	// This handles B `auto name;` and `auto name size;`
 	var decls []*ast.Node
 	for {
-		p.expect(token.Ident, "Expected identifier in declaration.")
-		name, itemToken := p.previous.Value, p.previous
+		var name string
+		var itemToken token.Token
+
+		if p.check(token.Ident) {
+			itemToken = p.current
+			name = p.current.Value
+			p.advance()
+		} else if p.check(token.TypeKeyword) {
+			itemToken = p.current
+			name = "type"
+			util.Warn(p.cfg, config.WarnExtra, itemToken, "Using keyword 'type' as an identifier.")
+			p.advance()
+		} else {
+			p.expect(token.Ident, "Expected identifier in declaration.")
+			if p.check(token.Comma) || p.check(token.Semi) {
+				continue
+			}
+			break
+		}
+
 		var sizeExpr *ast.Node
 		isVector, isBracketed := false, false
 
@@ -536,8 +512,8 @@ func (p *Parser) parseUntypedDeclarationList(declType token.Type, declTok token.
 			sizeExpr = p.parsePrimaryExpr()
 		}
 
-		if sizeExpr == nil && !isBracketed { // simple `auto name;`
-			if p.cfg.IsFeatureEnabled(config.FeatStrictDecl) || !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
+		if sizeExpr == nil && !isBracketed {
+			if !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
 				util.Error(itemToken, "Uninitialized declaration of '%s' is not allowed in this mode", name)
 			}
 		}
@@ -560,7 +536,7 @@ func (p *Parser) parseUntypedGlobalDefinition(nameToken token.Token) *ast.Node {
 	if p.isTypeName(name) {
 		util.Error(nameToken, "Variable name '%s' shadows a type.", name)
 	}
-	p.advance() // Consume identifier
+	p.advance()
 
 	var sizeExpr *ast.Node
 	isVector, isBracketed := false, false
@@ -592,7 +568,7 @@ func (p *Parser) parseUntypedGlobalDefinition(nameToken token.Token) *ast.Node {
 	}
 
 	if len(initList) == 0 && sizeExpr == nil && !isBracketed {
-		if p.cfg.IsFeatureEnabled(config.FeatStrictDecl) || !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
+		if !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
 			util.Error(nameToken, "Uninitialized declaration of '%s' is not allowed in this mode", name)
 		}
 	}
@@ -635,7 +611,6 @@ func (p *Parser) parseFuncDecl(returnType *ast.BxType, nameToken token.Token) *a
 	if p.check(token.LBrace) {
 		body = p.parseBlockStmt()
 	} else {
-		// A single statement is a valid body. A semicolon is a null statement
 		body = p.parseStmt()
 	}
 
@@ -653,10 +628,9 @@ func (p *Parser) parseFuncDecl(returnType *ast.BxType, nameToken token.Token) *a
 	}
 
 	if returnType == nil {
+		returnType = ast.TypeUntyped
 		if isTyped {
 			returnType = ast.TypeInt
-		} else {
-			returnType = ast.TypeUntyped
 		}
 	}
 
@@ -692,13 +666,12 @@ func (p *Parser) parseAsmFuncDef(nameToken token.Token) *ast.Node {
 	return ast.NewFuncDecl(nameToken, nameToken.Value, nil, body, false, false, nil)
 }
 
-// --- Bx Type System Parsing ---
-
 func (p *Parser) parseTypeDecl() *ast.Node {
 	typeTok := p.previous
 	var underlyingType *ast.BxType
 
 	if p.check(token.Struct) {
+		p.advance()
 		underlyingType = p.parseStructDef()
 	} else {
 		util.Error(typeTok, "Expected 'struct' after 'type'.")
@@ -731,7 +704,6 @@ func (p *Parser) parseTypedVarOrFuncDecl(isTopLevel bool) *ast.Node {
 
 	if p.match(token.Define) {
 		util.Error(p.previous, "Cannot use ':=' in a typed declaration. Use '=' instead.")
-		// Attempt to recover by treating it as '='
 		return p.parseTypedVarDeclBody(startTok, declType, p.previous)
 	}
 
@@ -816,7 +788,6 @@ func (p *Parser) parseType() *ast.BxType {
 		} else if p.isBuiltinType(tok) {
 			p.advance()
 			var typeName string
-			// Find the keyword string from the token type, since token.Value is empty for keywords
 			for keyword, t := range token.KeywordMap {
 				if t == p.previous.Type {
 					typeName = keyword
@@ -856,17 +827,14 @@ func (p *Parser) parseType() *ast.BxType {
 	}
 
 	if isConst {
-		// Create a new type so we don't modify a global like ast.TypeVoid
 		newType := *baseType
 		newType.IsConst = true
 		return &newType
 	}
-
 	return baseType
 }
 
 func (p *Parser) parseStructDef() *ast.BxType {
-	p.expect(token.Struct, "Expected 'struct' keyword.")
 	structType := &ast.BxType{Kind: ast.TYPE_STRUCT}
 
 	if p.check(token.Ident) {
@@ -880,12 +848,12 @@ func (p *Parser) parseStructDef() *ast.BxType {
 	p.expect(token.LBrace, "Expected '{' to open struct definition.")
 
 	for !p.check(token.RBrace) && !p.check(token.EOF) {
-		fieldDecl := p.parseTypedVarOrFuncDecl(false)
-		if fieldDecl.Type == ast.MultiVarDecl {
-			structType.Fields = append(structType.Fields, fieldDecl.Data.(ast.MultiVarDeclNode).Decls...)
-		} else {
-			structType.Fields = append(structType.Fields, fieldDecl)
-		}
+		p.expect(token.Ident, "Expected field name in struct.")
+		nameToken := p.previous
+		fieldType := p.parseType()
+		fieldDecl := ast.NewVarDecl(nameToken, nameToken.Value, fieldType, nil, nil, false, false, false)
+		structType.Fields = append(structType.Fields, fieldDecl)
+		p.expect(token.Semi, "Expected ';' after struct field declaration.")
 	}
 
 	p.expect(token.RBrace, "Expected '}' to close struct definition.")
@@ -895,40 +863,31 @@ func (p *Parser) parseStructDef() *ast.BxType {
 	return structType
 }
 
-// --- Parameter List Parsing ---
-
 func (p *Parser) isTypedParameterList() bool {
 	originalPos, originalCurrent := p.pos, p.current
 	defer func() { p.pos, p.current = originalPos, originalCurrent }()
 
 	if p.check(token.RParen) {
-		return false // An empty parameter list is untyped by default
+		return false
 	}
 	if p.check(token.Void) && p.peek().Type == token.RParen {
-		return true // `(void)` is explicitly typed
+		return true
 	}
-
-	// Heuristic: If the first item is a known type, it's a typed list
 	if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) {
 		return true
 	}
 
-	// Lookahead to see if a type follows a name list
-	// This is the ambiguous case: `(a, b, c int)` vs `(a, b, c)`
 	for {
 		if !p.check(token.Ident) {
-			return false // Not a name, can't be an untyped list starting this way
+			return false
 		}
 		p.advance()
 		if !p.match(token.Comma) {
 			break
 		}
 	}
-
-	// After a list of identifiers, is there a type?
 	return p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) || p.check(token.LBracket) || p.check(token.Star)
 }
-
 
 func (p *Parser) parseUntypedParameters() ([]*ast.Node, bool) {
 	var params []*ast.Node
@@ -969,23 +928,19 @@ func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 			break
 		}
 
-		// Check for the `(int, float)` anonymous parameter case
 		if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) {
 			paramType := p.parseType()
-			// Create a placeholder name for the anonymous parameter
 			name := fmt.Sprintf("anonparam%d", len(params))
 			paramNode := ast.NewVarDecl(p.previous, name, paramType, nil, nil, false, false, false)
 			params = append(params, paramNode)
 		} else {
-			// Handle named parameters, potentially in a list `(a, b int)`
 			var names []token.Token
 			p.expect(token.Ident, "Expected parameter name.")
 			names = append(names, p.previous)
 			for p.match(token.Comma) {
-				// If the next token looks like a type, we've finished the name list
 				if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) || p.check(token.LBracket) || p.check(token.Star) || p.check(token.RParen) || p.check(token.Dots) {
 					p.pos--
-					p.current = p.tokens[p.pos-1] // Rewind to before the comma
+					p.current = p.tokens[p.pos-1]
 					break
 				}
 				p.expect(token.Ident, "Expected parameter name.")
@@ -993,7 +948,6 @@ func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 			}
 
 			paramType := p.parseType()
-
 			for _, nameTok := range names {
 				paramNode := ast.NewVarDecl(nameTok, nameTok.Value, paramType, nil, nil, false, false, false)
 				params = append(params, paramNode)
@@ -1006,9 +960,6 @@ func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 	}
 	return params, hasVarargs
 }
-
-
-// --- Expression Parsing ---
 
 func getBinaryOpPrecedence(op token.Type) int {
 	switch op {
@@ -1160,6 +1111,10 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 	if p.match(token.Ident) {
 		return ast.NewIdent(tok, p.previous.Value)
 	}
+	if p.match(token.TypeKeyword) {
+		util.Warn(p.cfg, config.WarnExtra, p.previous, "Using keyword 'type' as an identifier.")
+		return ast.NewIdent(tok, "type")
+	}
 	if p.match(token.LParen) {
 		if p.isTypedPass && (p.isBuiltinType(p.current) || p.isTypeName(p.current.Value)) {
 			castType := p.parseType()
@@ -1188,8 +1143,6 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 	}
 	return nil
 }
-
-// --- Switch/Case Handling ---
 
 func (p *Parser) buildSwitchJumpTable(switchNode *ast.Node) {
 	if switchNode == nil || switchNode.Type != ast.Switch {

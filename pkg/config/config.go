@@ -120,7 +120,7 @@ func NewConfig() *Config {
 	return cfg
 }
 
-// SetTarget configures the compiler for a specific architecture and QBE target
+// SetTarget configures the compiler for a specific architecture and QBE target.
 func (c *Config) SetTarget(goos, goarch, qbeTarget string) {
 	if qbeTarget == "" {
 		c.QbeTarget = libqbe.DefaultTarget(goos, goarch)
@@ -132,22 +132,16 @@ func (c *Config) SetTarget(goos, goarch, qbeTarget string) {
 
 	c.TargetArch = goarch
 
-	// QBE only supports these:
 	switch c.QbeTarget {
 	case "amd64_sysv", "amd64_apple", "arm64", "arm64_apple", "rv64":
-		c.WordSize = 8
-		c.WordType = "l"
-		c.StackAlignment = 16
+		c.WordSize, c.WordType, c.StackAlignment = 8, "l", 16
+	case "arm", "rv32":
+		c.WordSize, c.WordType, c.StackAlignment = 4, "w", 8
 	default:
 		fmt.Fprintf(os.Stderr, "gbc: warning: unrecognized or unsupported QBE target '%s'.\n", c.QbeTarget)
 		fmt.Fprintf(os.Stderr, "gbc: warning: defaulting to 64-bit properties. Compilation may fail.\n")
-		c.WordSize = 8
-		c.WordType = "l"
-		c.StackAlignment = 16
+		c.WordSize, c.WordType, c.StackAlignment = 8, "l", 16
 	}
-	// TODO: C target
-	// TODO: GameBoyColor target
-	// TODO: Experiment with the GOABI0 target of modernc.org/libqbe
 }
 
 func (c *Config) SetFeature(ft Feature, enabled bool) {

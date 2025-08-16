@@ -1,4 +1,3 @@
-// Package lexer is responsible for breaking B source code into a stream of tokens
 package lexer
 
 import (
@@ -11,7 +10,6 @@ import (
 	"github.com/xplshn/gbc/pkg/util"
 )
 
-// Lexer holds the state required for tokenizing a source string
 type Lexer struct {
 	source    []rune
 	fileIndex int
@@ -21,14 +19,12 @@ type Lexer struct {
 	cfg       *config.Config
 }
 
-// NewLexer creates and initializes a new Lexer instance
 func NewLexer(source []rune, fileIndex int, cfg *config.Config) *Lexer {
 	return &Lexer{
 		source: source, fileIndex: fileIndex, line: 1, column: 1, cfg: cfg,
 	}
 }
 
-// Next consumes and returns the next token from the source
 func (l *Lexer) Next() token.Token {
 	for {
 		l.skipWhitespaceAndComments()
@@ -38,7 +34,6 @@ func (l *Lexer) Next() token.Token {
 			return l.makeToken(token.EOF, "", startPos, startCol, startLine)
 		}
 
-		// Handle directives before other tokens.
 		if !l.cfg.IsFeatureEnabled(config.FeatNoDirectives) && l.peek() == '/' && l.peekNext() == '/' {
 			if tok, isDirective := l.lineCommentOrDirective(startPos, startCol, startLine); isDirective {
 				return tok
@@ -54,36 +49,61 @@ func (l *Lexer) Next() token.Token {
 		}
 
 		switch ch {
-		case '(': return l.makeToken(token.LParen, "", startPos, startCol, startLine)
-		case ')': return l.makeToken(token.RParen, "", startPos, startCol, startLine)
-		case '{': return l.makeToken(token.LBrace, "", startPos, startCol, startLine)
-		case '}': return l.makeToken(token.RBrace, "", startPos, startCol, startLine)
-		case '[': return l.makeToken(token.LBracket, "", startPos, startCol, startLine)
-		case ']': return l.makeToken(token.RBracket, "", startPos, startCol, startLine)
-		case ';': return l.makeToken(token.Semi, "", startPos, startCol, startLine)
-		case ',': return l.makeToken(token.Comma, "", startPos, startCol, startLine)
-		case '?': return l.makeToken(token.Question, "", startPos, startCol, startLine)
-		case '~': return l.makeToken(token.Complement, "", startPos, startCol, startLine)
-		case ':': return l.matchThen('=', token.Define, token.Colon, startPos, startCol, startLine)
-		case '!': return l.matchThen('=', token.Neq, token.Not, startPos, startCol, startLine)
-		case '^': return l.matchThen('=', token.XorEq, token.Xor, startPos, startCol, startLine)
-		case '%': return l.matchThen('=', token.RemEq, token.Rem, startPos, startCol, startLine)
-		case '+': return l.plus(startPos, startCol, startLine)
-		case '-': return l.minus(startPos, startCol, startLine)
-		case '*': return l.star(startPos, startCol, startLine)
-		case '/': return l.slash(startPos, startCol, startLine)
-		case '&': return l.ampersand(startPos, startCol, startLine)
-		case '|': return l.pipe(startPos, startCol, startLine)
-		case '<': return l.less(startPos, startCol, startLine)
-		case '>': return l.greater(startPos, startCol, startLine)
-		case '=': return l.equal(startPos, startCol, startLine)
+		case '(':
+			return l.makeToken(token.LParen, "", startPos, startCol, startLine)
+		case ')':
+			return l.makeToken(token.RParen, "", startPos, startCol, startLine)
+		case '{':
+			return l.makeToken(token.LBrace, "", startPos, startCol, startLine)
+		case '}':
+			return l.makeToken(token.RBrace, "", startPos, startCol, startLine)
+		case '[':
+			return l.makeToken(token.LBracket, "", startPos, startCol, startLine)
+		case ']':
+			return l.makeToken(token.RBracket, "", startPos, startCol, startLine)
+		case ';':
+			return l.makeToken(token.Semi, "", startPos, startCol, startLine)
+		case ',':
+			return l.makeToken(token.Comma, "", startPos, startCol, startLine)
+		case '?':
+			return l.makeToken(token.Question, "", startPos, startCol, startLine)
+		case '~':
+			return l.makeToken(token.Complement, "", startPos, startCol, startLine)
+		case ':':
+			return l.matchThen('=', token.Define, token.Colon, startPos, startCol, startLine)
+		case '!':
+			return l.matchThen('=', token.Neq, token.Not, startPos, startCol, startLine)
+		case '^':
+			return l.matchThen('=', token.XorEq, token.Xor, startPos, startCol, startLine)
+		case '%':
+			return l.matchThen('=', token.RemEq, token.Rem, startPos, startCol, startLine)
+		case '+':
+			return l.plus(startPos, startCol, startLine)
+		case '-':
+			return l.minus(startPos, startCol, startLine)
+		case '*':
+			return l.star(startPos, startCol, startLine)
+		case '/':
+			return l.slash(startPos, startCol, startLine)
+		case '&':
+			return l.ampersand(startPos, startCol, startLine)
+		case '|':
+			return l.pipe(startPos, startCol, startLine)
+		case '<':
+			return l.less(startPos, startCol, startLine)
+		case '>':
+			return l.greater(startPos, startCol, startLine)
+		case '=':
+			return l.equal(startPos, startCol, startLine)
 		case '.':
 			if l.match('.') && l.match('.') {
 				return l.makeToken(token.Dots, "", startPos, startCol, startLine)
 			}
 			return l.makeToken(token.Dot, "", startPos, startCol, startLine)
-		case '"': return l.stringLiteral(startPos, startCol, startLine)
-		case '\'': return l.charLiteral(startPos, startCol, startLine)
+		case '"':
+			return l.stringLiteral(startPos, startCol, startLine)
+		case '\'':
+			return l.charLiteral(startPos, startCol, startLine)
 		}
 
 		tok := l.makeToken(token.EOF, "", startPos, startCol, startLine)
@@ -93,17 +113,23 @@ func (l *Lexer) Next() token.Token {
 }
 
 func (l *Lexer) peek() rune {
-	if l.isAtEnd() { return 0 }
+	if l.isAtEnd() {
+		return 0
+	}
 	return l.source[l.pos]
 }
 
 func (l *Lexer) peekNext() rune {
-	if l.pos+1 >= len(l.source) { return 0 }
+	if l.pos+1 >= len(l.source) {
+		return 0
+	}
 	return l.source[l.pos+1]
 }
 
 func (l *Lexer) advance() rune {
-	if l.isAtEnd() { return 0 }
+	if l.isAtEnd() {
+		return 0
+	}
 	ch := l.source[l.pos]
 	if ch == '\n' {
 		l.line++
@@ -160,7 +186,8 @@ func (l *Lexer) blockComment() {
 	l.advance() // Consume '*'
 	for !l.isAtEnd() {
 		if l.peek() == '*' && l.peekNext() == '/' {
-			l.advance(); l.advance()
+			l.advance()
+			l.advance()
 			return
 		}
 		l.advance()
@@ -190,7 +217,6 @@ func (l *Lexer) lineCommentOrDirective(startPos, startCol, startLine int) (token
 		return l.makeToken(token.Directive, directiveContent, startPos, startCol, startLine), true
 	}
 
-	// It wasn't a directive, so rewind to before we consumed the comment.
 	l.pos, l.column, l.line = preCommentPos, preCommentCol, preCommentLine
 	return token.Token{}, false
 }
@@ -291,63 +317,99 @@ func (l *Lexer) matchThen(expected rune, thenType, elseType token.Type, sPos, sC
 }
 
 func (l *Lexer) plus(sPos, sCol, sLine int) token.Token {
-	if l.match('+') { return l.makeToken(token.Inc, "", sPos, sCol, sLine) }
-	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') { return l.makeToken(token.PlusEq, "", sPos, sCol, sLine) }
+	if l.match('+') {
+		return l.makeToken(token.Inc, "", sPos, sCol, sLine)
+	}
+	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') {
+		return l.makeToken(token.PlusEq, "", sPos, sCol, sLine)
+	}
 	return l.makeToken(token.Plus, "", sPos, sCol, sLine)
 }
 
 func (l *Lexer) minus(sPos, sCol, sLine int) token.Token {
-	if l.match('-') { return l.makeToken(token.Dec, "", sPos, sCol, sLine) }
-	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') { return l.makeToken(token.MinusEq, "", sPos, sCol, sLine) }
+	if l.match('-') {
+		return l.makeToken(token.Dec, "", sPos, sCol, sLine)
+	}
+	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') {
+		return l.makeToken(token.MinusEq, "", sPos, sCol, sLine)
+	}
 	return l.makeToken(token.Minus, "", sPos, sCol, sLine)
 }
 
 func (l *Lexer) star(sPos, sCol, sLine int) token.Token {
-	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') { return l.makeToken(token.StarEq, "", sPos, sCol, sLine) }
+	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') {
+		return l.makeToken(token.StarEq, "", sPos, sCol, sLine)
+	}
 	return l.makeToken(token.Star, "", sPos, sCol, sLine)
 }
 
 func (l *Lexer) slash(sPos, sCol, sLine int) token.Token {
-	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') { return l.makeToken(token.SlashEq, "", sPos, sCol, sLine) }
+	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') {
+		return l.makeToken(token.SlashEq, "", sPos, sCol, sLine)
+	}
 	return l.makeToken(token.Slash, "", sPos, sCol, sLine)
 }
 
 func (l *Lexer) ampersand(sPos, sCol, sLine int) token.Token {
-	if l.match('&') { return l.makeToken(token.AndAnd, "", sPos, sCol, sLine) }
-	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') { return l.makeToken(token.AndEq, "", sPos, sCol, sLine) }
+	if l.match('&') {
+		return l.makeToken(token.AndAnd, "", sPos, sCol, sLine)
+	}
+	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') {
+		return l.makeToken(token.AndEq, "", sPos, sCol, sLine)
+	}
 	return l.makeToken(token.And, "", sPos, sCol, sLine)
 }
 
 func (l *Lexer) pipe(sPos, sCol, sLine int) token.Token {
-	if l.match('|') { return l.makeToken(token.OrOr, "", sPos, sCol, sLine) }
-	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') { return l.makeToken(token.OrEq, "", sPos, sCol, sLine) }
+	if l.match('|') {
+		return l.makeToken(token.OrOr, "", sPos, sCol, sLine)
+	}
+	if l.cfg.IsFeatureEnabled(config.FeatCOps) && l.match('=') {
+		return l.makeToken(token.OrEq, "", sPos, sCol, sLine)
+	}
 	return l.makeToken(token.Or, "", sPos, sCol, sLine)
 }
 
 func (l *Lexer) less(sPos, sCol, sLine int) token.Token {
-	if l.match('<') { return l.matchThen('=', token.ShlEq, token.Shl, sPos, sCol, sLine) }
+	if l.match('<') {
+		return l.matchThen('=', token.ShlEq, token.Shl, sPos, sCol, sLine)
+	}
 	return l.matchThen('=', token.Lte, token.Lt, sPos, sCol, sLine)
 }
 
 func (l *Lexer) greater(sPos, sCol, sLine int) token.Token {
-	if l.match('>') { return l.matchThen('=', token.ShrEq, token.Shr, sPos, sCol, sLine) }
+	if l.match('>') {
+		return l.matchThen('=', token.ShrEq, token.Shr, sPos, sCol, sLine)
+	}
 	return l.matchThen('=', token.Gte, token.Gt, sPos, sCol, sLine)
 }
 
 func (l *Lexer) equal(sPos, sCol, sLine int) token.Token {
-	if l.match('=') { return l.makeToken(token.EqEq, "", sPos, sCol, sLine) }
+	if l.match('=') {
+		return l.makeToken(token.EqEq, "", sPos, sCol, sLine)
+	}
 	if l.cfg.IsFeatureEnabled(config.FeatBOps) {
 		switch {
-		case l.match('+'): return l.makeToken(token.EqPlus, "", sPos, sCol, sLine)
-		case l.match('-'): return l.makeToken(token.EqMinus, "", sPos, sCol, sLine)
-		case l.match('*'): return l.makeToken(token.EqStar, "", sPos, sCol, sLine)
-		case l.match('/'): return l.makeToken(token.EqSlash, "", sPos, sCol, sLine)
-		case l.match('%'): return l.makeToken(token.EqRem, "", sPos, sCol, sLine)
-		case l.match('&'): return l.makeToken(token.EqAnd, "", sPos, sCol, sLine)
-		case l.match('|'): return l.makeToken(token.EqOr, "", sPos, sCol, sLine)
-		case l.match('^'): return l.makeToken(token.EqXor, "", sPos, sCol, sLine)
-		case l.match('<') && l.match('<'): return l.makeToken(token.EqShl, "", sPos, sCol, sLine)
-		case l.match('>') && l.match('>'): return l.makeToken(token.EqShr, "", sPos, sCol, sLine)
+		case l.match('+'):
+			return l.makeToken(token.EqPlus, "", sPos, sCol, sLine)
+		case l.match('-'):
+			return l.makeToken(token.EqMinus, "", sPos, sCol, sLine)
+		case l.match('*'):
+			return l.makeToken(token.EqStar, "", sPos, sCol, sLine)
+		case l.match('/'):
+			return l.makeToken(token.EqSlash, "", sPos, sCol, sLine)
+		case l.match('%'):
+			return l.makeToken(token.EqRem, "", sPos, sCol, sLine)
+		case l.match('&'):
+			return l.makeToken(token.EqAnd, "", sPos, sCol, sLine)
+		case l.match('|'):
+			return l.makeToken(token.EqOr, "", sPos, sCol, sLine)
+		case l.match('^'):
+			return l.makeToken(token.EqXor, "", sPos, sCol, sLine)
+		case l.match('<') && l.match('<'):
+			return l.makeToken(token.EqShl, "", sPos, sCol, sLine)
+		case l.match('>') && l.match('>'):
+			return l.makeToken(token.EqShr, "", sPos, sCol, sLine)
 		}
 	}
 	return l.makeToken(token.Eq, "", sPos, sCol, sLine)

@@ -1,29 +1,12 @@
-/*
- * textfmt.b - A simple text formatter.
- *
- * This program reads text from standard input, formats it to a fixed
- * line width, and prints it to standard output. It demonstrates a mix
- * of classic, untyped B for the main logic and new, typed Bx for
- * helper functions where type clarity is beneficial.
- *
- * Compile with: gbc textfmt.b -o textfmt
- * Run with: ./textfmt < input.txt
- */
-
 extrn putchar, getchar;
 
-/* --- Global Variables --- */
+MAX_WIDTH 70;
 
-MAX_WIDTH 70; /* The maximum width of a line of text. */
+byte line_buf[100];
+byte word_buf[50];
+int line_len;
+int word_len;
 
-byte line_buf[100]; /* Buffer to hold the current line. */
-byte word_buf[50];  /* Buffer to hold the current word. */
-int line_len;      /* Current length of the line in line_buf. */
-int word_len;      /* Current length of the word in word_buf. */
-
-/*
- * Bx: A typed helper function to print a string.
- */
 void print_string(s byte*, len int) {
     auto i;
     i = 0;
@@ -33,9 +16,6 @@ void print_string(s byte*, len int) {
     }
 }
 
-/*
- * Bx: A typed helper function to flush the current line buffer.
- */
 void flush_line() {
     if (line_len > 0) {
         print_string(line_buf, line_len);
@@ -44,13 +24,9 @@ void flush_line() {
     line_len = 0;
 }
 
-/*
- * Bx: A typed function to append a word to the current line.
- */
 void append_word_to_line() {
     auto i;
 
-    /* Add a space before the word if the line isn't empty. */
     if (line_len > 0) {
         line_buf[line_len] = ' ';
         line_len++;
@@ -62,35 +38,32 @@ void append_word_to_line() {
         line_len++;
         i++;
     }
-    word_len = 0; /* Reset word buffer after appending */
+    word_len = 0;
 }
 
-/*
- * main() - The main program logic.
- */
 main() {
     auto c;
 
     line_len = 0;
     word_len = 0;
 
-    while ((c = getchar()) != -1) { /* -1 is EOF */
+    while ((c = getchar()) != -1) { // -1 == EOF
         if (c == ' ' || c == '\t' || c == '\n') {
-            /* Whitespace detected, process the completed word. */
+            // Whitespace detected, process the completed word
             if (word_len > 0) {
                 if (line_len + word_len + 1 > MAX_WIDTH) {
-                    /* Word doesn't fit, flush the current line first. */
+                    // Word doesn't fit, flush the current line first
                     flush_line();
                 }
                 append_word_to_line();
             }
 
             if (c == '\n') {
-                /* An explicit newline in the input flushes the current line. */
+                // An explicit newline in the input flushes the current line
                 flush_line();
             }
         } else {
-            /* It's a character for the current word. */
+            // It's a character for the current word
             if (word_len < 49) {
                 word_buf[word_len] = c;
                 word_len++;
@@ -98,7 +71,7 @@ main() {
         }
     }
 
-    /* End of input, process any remaining word and flush the last line. */
+    // End of input, process any remaining word and flush the last line
     if (word_len > 0) {
         if (line_len + word_len + 1 > MAX_WIDTH) {
             flush_line();

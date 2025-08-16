@@ -1,4 +1,3 @@
-// Package typeChecker traverses the AST to ensure type compatibility
 package typeChecker
 
 import (
@@ -11,23 +10,20 @@ import (
 	"github.com/xplshn/gbc/pkg/util"
 )
 
-// Symbol represents an entry in the type checker's symbol table
 type Symbol struct {
 	Name   string
 	Type   *ast.BxType
 	IsFunc bool
-	IsType bool // True only for typedef statements
+	IsType bool
 	Node   *ast.Node
 	Next   *Symbol
 }
 
-// Scope represents a lexical scope
 type Scope struct {
 	Symbols *Symbol
 	Parent  *Scope
 }
 
-// TypeChecker holds the state for the type checking pass
 type TypeChecker struct {
 	currentScope *Scope
 	currentFunc  *ast.FuncDeclNode
@@ -37,7 +33,6 @@ type TypeChecker struct {
 	wordSize     int
 }
 
-// NewTypeChecker creates a new type checker
 func NewTypeChecker(cfg *config.Config) *TypeChecker {
 	globalScope := newScope(nil)
 	return &TypeChecker{
@@ -78,7 +73,7 @@ func (tc *TypeChecker) addSymbol(node *ast.Node) *Symbol {
 			}
 		}
 		return nil
-	case ast.IdentNode: // For untyped function parameters
+	case ast.IdentNode: // untyped function parameters
 		name, typ = d.Name, ast.TypeUntyped
 	default:
 		return nil
@@ -137,12 +132,10 @@ func (tc *TypeChecker) getSizeof(typ *ast.BxType) int64 {
 		return elemSize * arrayLen
 	case ast.TYPE_PRIMITIVE:
 		switch typ.Name {
-		case "int", "uint":
+		case "int", "uint", "string":
 			return int64(tc.wordSize)
 		case "int64", "uint64":
 			return 8
-		case "string":
-			return int64(tc.wordSize)
 		case "int32", "uint32":
 			return 4
 		case "int16", "uint16":
@@ -160,16 +153,12 @@ func (tc *TypeChecker) getSizeof(typ *ast.BxType) int64 {
 		for _, field := range typ.Fields {
 			totalSize += tc.getSizeof(field.Data.(ast.VarDeclNode).Type)
 		}
-
-		// NOTE: This does not account for alignment/padding within the struct
-		// For the current examples, this is fine as all members are pointers
-		// TODO: A more robust implementation is required to handle alignment
+		// NOTE: does not account for alignment/padding
 		return totalSize
 	}
 	return int64(tc.wordSize)
 }
 
-// Check is the main entry point for the type checking pass
 func (tc *TypeChecker) Check(root *ast.Node) {
 	if !tc.cfg.IsFeatureEnabled(config.FeatTyped) {
 		return
@@ -264,7 +253,6 @@ func (tc *TypeChecker) checkNode(node *ast.Node) {
 	case ast.ExtrnDecl:
 		tc.addSymbol(node)
 	case ast.TypeDecl, ast.Goto, ast.Break, ast.Continue, ast.AsmStmt, ast.Directive:
-		// No type checking needed
 	default:
 		if node.Type <= ast.TypeCast {
 			tc.checkExpr(node)
@@ -295,9 +283,9 @@ func (tc *TypeChecker) checkVarDecl(node *ast.Node) {
 	}
 	if tc.currentFunc != nil {
 		tc.addSymbol(node)
-	} // Add local vars to scope
+	}
 	if len(d.InitList) == 0 {
-		if (d.Type == nil || d.Type.Kind == ast.TYPE_UNTYPED) && (tc.cfg.IsFeatureEnabled(config.FeatStrictDecl) || !tc.cfg.IsFeatureEnabled(config.FeatAllowUninitialized)) {
+		if (d.Type == nil || d.Type.Kind == ast.TYPE_UNTYPED) && !tc.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
 			util.Error(node.Tok, "Uninitialized variable '%s' is not allowed in this mode", d.Name)
 		}
 		node.Typ = d.Type
@@ -375,6 +363,19 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 	switch d := node.Data.(type) {
 	case ast.AssignNode:
 		lhsType, rhsType := tc.checkExpr(d.Lhs), tc.checkExpr(d.Rhs)
+		if d.Lhs.Type == ast.Subscript {
+			subscript := d.Lhs.Data.(ast.SubscriptNode)
+			arrayExpr := subscript.Array
+			if arrayExpr.Typ != nil && arrayExpr.Typ.Kind == ast.TYPE_POINTER && arrayExpr.Typ.Base.Kind == ast.TYPE_UNTYPED {
+				arrayExpr.Typ.Base = rhsType
+				lhsType = rhsType
+				if arrayExpr.Type == ast.Ident {
+					if sym := tc.findSymbol(arrayExpr.Data.(ast.IdentNode).Name, false); sym != nil {
+						sym.Type = arrayExpr.Typ
+					}
+				}
+			}
+		}
 		if lhsType.Kind == ast.TYPE_UNTYPED && d.Lhs.Type == ast.Ident {
 			if sym := tc.findSymbol(d.Lhs.Data.(ast.IdentNode).Name, false); sym != nil {
 				sym.Type, sym.IsFunc = rhsType, false
@@ -395,10 +396,21 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 			resolvedOpType := tc.resolveType(operandType)
 			if resolvedOpType.Kind == ast.TYPE_POINTER || resolvedOpType.Kind == ast.TYPE_ARRAY {
 				typ = resolvedOpType.Base
-			} else if resolvedOpType.Kind != ast.TYPE_UNTYPED {
-				util.Error(node.Tok, "Cannot dereference non-pointer type '%s'", typeToString(operandType))
-				typ = ast.TypeUntyped
+			} else if resolvedOpType.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(resolvedOpType) {
+				// An untyped or integer variable is being dereferenced.
+				// Very common pattern in B. Promote it to a pointer to an untyped base
+				promotedType := &ast.BxType{Kind: ast.TYPE_POINTER, Base: ast.TypeUntyped}
+				d.Expr.Typ = promotedType
+				if d.Expr.Type == ast.Ident {
+					if sym := tc.findSymbol(d.Expr.Data.(ast.IdentNode).Name, false); sym != nil {
+						if sym.Type == nil || sym.Type.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(sym.Type) {
+							sym.Type = promotedType
+						}
+					}
+				}
+				typ = promotedType.Base
 			} else {
+				util.Error(node.Tok, "Cannot dereference non-pointer type '%s'", typeToString(operandType))
 				typ = ast.TypeUntyped
 			}
 		case token.And: // Address-of
@@ -423,10 +435,23 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 		resolvedArrayType := tc.resolveType(arrayType)
 		if resolvedArrayType.Kind == ast.TYPE_ARRAY || resolvedArrayType.Kind == ast.TYPE_POINTER {
 			typ = resolvedArrayType.Base
-		} else if resolvedArrayType.Kind != ast.TYPE_UNTYPED {
-			util.Error(node.Tok, "Cannot subscript non-array/pointer type '%s'", typeToString(arrayType))
-			typ = ast.TypeUntyped
+		} else if resolvedArrayType.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(resolvedArrayType) {
+			// An untyped or integer variable is being used as a pointer
+			// Another super common pattern in B. Promote it to a pointer to an untyped base
+			// The base type will be inferred from usage (e.g., assignment)
+			promotedType := &ast.BxType{Kind: ast.TYPE_POINTER, Base: ast.TypeUntyped}
+			d.Array.Typ = promotedType
+
+			if d.Array.Type == ast.Ident {
+				if sym := tc.findSymbol(d.Array.Data.(ast.IdentNode).Name, false); sym != nil {
+					if sym.Type == nil || sym.Type.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(sym.Type) {
+						sym.Type = promotedType
+					}
+				}
+			}
+			typ = promotedType.Base
 		} else {
+			util.Error(node.Tok, "Cannot subscript non-array/pointer type '%s'", typeToString(arrayType))
 			typ = ast.TypeUntyped
 		}
 	case ast.MemberAccessNode:

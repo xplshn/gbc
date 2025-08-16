@@ -1,4 +1,3 @@
-// Package ast defines the types used to represent the Abstract Syntax Tree (AST)
 package ast
 
 import (
@@ -6,10 +5,8 @@ import (
 	"github.com/xplshn/gbc/pkg/util"
 )
 
-// NodeType defines the kind of a node in the AST
 type NodeType int
 
-// Node types enum
 const (
 	// Expressions
 	Number NodeType = iota
@@ -49,19 +46,17 @@ const (
 	Directive
 )
 
-// Node represents a node in the Abstract Syntax Tree
+// Node represents a node in the Abstract Syntax Tree.
 type Node struct {
 	Type   NodeType
 	Tok    token.Token
 	Parent *Node
 	Data   interface{}
-	Typ    *BxType // Set by the type checker
+	Typ    *BxType // Set by the type checker.
 }
 
-// BxTypeKind defines the kind of a BxType
 type BxTypeKind int
 
-// BxType kinds enum
 const (
 	TYPE_PRIMITIVE BxTypeKind = iota
 	TYPE_POINTER
@@ -73,18 +68,18 @@ const (
 	TYPE_UNTYPED
 )
 
-// BxType represents a type in the Bx type system
+// BxType represents a type in the Bx type system.
 type BxType struct {
 	Kind      BxTypeKind
-	Base      *BxType // Base type for pointers or arrays
-	Name      string  // Name for primitive types or the typedef name
+	Base      *BxType // Base type for pointers or arrays.
+	Name      string  // Name for primitive types or the typedef name.
 	ArraySize *Node
 	IsConst   bool
-	StructTag string  // The name immediately following the 'struct' keyword
-	Fields    []*Node // List of *VarDecl nodes for struct members
+	StructTag string  // The name immediately following the 'struct' keyword.
+	Fields    []*Node // List of *VarDecl nodes for struct members.
 }
 
-// Pre-defined types
+// Pre-defined types.
 var (
 	TypeInt     = &BxType{Kind: TYPE_PRIMITIVE, Name: "int"}
 	TypeUint    = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint"}
@@ -106,7 +101,6 @@ var (
 	TypeString  = &BxType{Kind: TYPE_POINTER, Base: TypeByte, Name: "string"}
 )
 
-// --- Node Data Structs ---
 type NumberNode struct{ Value int64 }
 type StringNode struct{ Value string }
 type IdentNode struct{ Name string }
@@ -156,8 +150,6 @@ type ContinueNode struct{}
 type LabelNode struct{ Name string; Stmt *Node }
 type AsmStmtNode struct{ Code string }
 type DirectiveNode struct{ Name string }
-
-// --- Node Constructors ---
 
 func newNode(tok token.Token, nodeType NodeType, data interface{}, children ...*Node) *Node {
 	node := &Node{Type: nodeType, Tok: tok, Data: data}
@@ -299,13 +291,12 @@ func NewDirective(tok token.Token, name string) *Node {
 	return newNode(tok, Directive, DirectiveNode{Name: name})
 }
 
-// FoldConstants performs compile-time constant evaluation on the AST
+// FoldConstants performs compile-time constant evaluation on the AST.
 func FoldConstants(node *Node) *Node {
 	if node == nil {
 		return nil
 	}
 
-	// Recursively fold children first
 	switch d := node.Data.(type) {
 	case AssignNode:
 		d.Rhs = FoldConstants(d.Rhs)
@@ -330,7 +321,6 @@ func FoldConstants(node *Node) *Node {
 		node.Data = d
 	}
 
-	// Then, attempt to fold the current node.
 	switch node.Type {
 	case BinaryOp:
 		d := node.Data.(BinaryOpNode)
@@ -339,25 +329,55 @@ func FoldConstants(node *Node) *Node {
 			var res int64
 			folded := true
 			switch d.Op {
-			case token.Plus: res = l + r
-			case token.Minus: res = l - r
-			case token.Star: res = l * r
-			case token.And: res = l & r
-			case token.Or: res = l | r
-			case token.Xor: res = l ^ r
-			case token.Shl: res = l << uint64(r)
-			case token.Shr: res = l >> uint64(r)
-			case token.EqEq: if l == r { res = 1 }
-			case token.Neq: if l != r { res = 1 }
-			case token.Lt: if l < r { res = 1 }
-			case token.Gt: if l > r { res = 1 }
-			case token.Lte: if l <= r { res = 1 }
-			case token.Gte: if l >= r { res = 1 }
+			case token.Plus:
+				res = l + r
+			case token.Minus:
+				res = l - r
+			case token.Star:
+				res = l * r
+			case token.And:
+				res = l & r
+			case token.Or:
+				res = l | r
+			case token.Xor:
+				res = l ^ r
+			case token.Shl:
+				res = l << uint64(r)
+			case token.Shr:
+				res = l >> uint64(r)
+			case token.EqEq:
+				if l == r {
+					res = 1
+				}
+			case token.Neq:
+				if l != r {
+					res = 1
+				}
+			case token.Lt:
+				if l < r {
+					res = 1
+				}
+			case token.Gt:
+				if l > r {
+					res = 1
+				}
+			case token.Lte:
+				if l <= r {
+					res = 1
+				}
+			case token.Gte:
+				if l >= r {
+					res = 1
+				}
 			case token.Slash:
-				if r == 0 { util.Error(node.Tok, "Compile-time division by zero.") }
+				if r == 0 {
+					util.Error(node.Tok, "Compile-time division by zero.")
+				}
 				res = l / r
 			case token.Rem:
-				if r == 0 { util.Error(node.Tok, "Compile-time modulo by zero.") }
+				if r == 0 {
+					util.Error(node.Tok, "Compile-time modulo by zero.")
+				}
 				res = l % r
 			default:
 				folded = false
@@ -373,9 +393,14 @@ func FoldConstants(node *Node) *Node {
 			var res int64
 			folded := true
 			switch d.Op {
-			case token.Minus: res = -val
-			case token.Complement: res = ^val
-			case token.Not: if val == 0 { res = 1 }
+			case token.Minus:
+				res = -val
+			case token.Complement:
+				res = ^val
+			case token.Not:
+				if val == 0 {
+					res = 1
+				}
 			default:
 				folded = false
 			}

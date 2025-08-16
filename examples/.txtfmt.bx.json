@@ -1,21 +1,21 @@
 {
-  "binary_path": "/tmp/gtest-2334624446/ad7b72066c8c4fb1",
+  "binary_path": "/tmp/gtest-2125050678/b4ec78171c1e3a7d",
   "compile": {
-    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nQBE Codegen...\nCalling libqbe on our QBE IR...\nAssembling and linking to create '/tmp/gtest-2334624446/ad7b72066c8c4fb1'...\n----------------------\nCompilation successful!\n",
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nQBE Codegen...\nCalling libqbe on our QBE IR...\nAssembling and linking to create '/tmp/gtest-2125050678/b4ec78171c1e3a7d'...\n----------------------\nCompilation successful!\n",
     "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv'\n",
     "exitCode": 0,
-    "duration": 21923577,
+    "duration": 24357369,
     "timed_out": false
   },
   "runs": [
     {
       "name": "fold",
-      "input": "09876543210123456789009887654321012345678900987654321098765432101234567890098876543210123456789009876543210\n\n",
+      "input": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n\n",
       "result": {
-        "stdout": "0987654321012345678900988765432101234567890098765\n",
+        "stdout": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw\n",
         "stderr": "",
         "exitCode": -1,
-        "duration": 5000642058,
+        "duration": 5001114381,
         "timed_out": true
       }
     }

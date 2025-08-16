@@ -10,9 +10,9 @@ extrn putchar, getchar, printf, scanf, strlen, strcpy, strcmp, malloc;
 int TABLE_SIZE = 101;
 
 type struct Entry {
-    byte* key;
-    byte* value;
-    Entry* next;
+    key   byte*;
+    value byte*;
+    next  Entry*;
 };
 
 Entry* table[TABLE_SIZE];
@@ -24,7 +24,6 @@ int hash(key byte*) {
         result = (31 * result + key[i]);
         i = i + 1;
     }
-    // Ensure the result is non-negative before the final modulo.
     return ((result % TABLE_SIZE + TABLE_SIZE) % TABLE_SIZE);
 }
 
