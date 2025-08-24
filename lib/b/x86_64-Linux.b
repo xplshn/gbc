@@ -1,1 +1,1 @@
-amd64_linux.b
+gas-x86_64-linux.b

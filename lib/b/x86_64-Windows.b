@@ -1,1 +1,1 @@
-amd64_windows.b
+gas-x86_64-windows.b

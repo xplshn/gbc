@@ -1,1 +1,1 @@
-amd64_darwin.b
+gas-x86_64-darwin.b

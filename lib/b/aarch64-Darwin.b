@@ -1,1 +1,1 @@
-arm64_darwin.b
+gas-aarch64-darwin.b
