@@ -7,84 +7,77 @@
 
 This compiler is a project aiming to make a valid B compiler, with _optional_ syntax extensions, and a modules system like Go's
 
-```
+```sh
 ]~/Documents/TrulyMine/gbc@ ./gbc --help
 
-Copyright (c) 2025: xplshn and contributors
-For more details refer to <https://github.com/xplshn/gbc>
+    Copyright (c) 2025: xplshn and contributors
+    For more details refer to <https://github.com/xplshn/gbc>
 
-  Synopsis
-    gbc [options] <input.b> ...
+    Synopsis
+        gbc [options] <input.b> ...
 
-  Description
-    A compiler for the B programming language and its extensions, written in Go.
+    Description
+        A compiler for the B programming language and its extensions, written in Go.
 
-  Options
-    -o <file>              Place the output into <file>.
-    -t, --target <target>  Set the QBE target ABI.
-    -I <path>              Add a directory to the include path.
-    -L <arg>               Pass an argument to the linker.
-    -C <arg>               Pass a compiler-specific argument (e.g., -C linker_args='-s').
-    -l<lib>                Link with a library (e.g., -lb for 'b').
-    -h, --help             Display this information.
-    -std=<std>             Specify language standard (B, Bx). Default: Bx
-    -pedantic              Issue all warnings demanded by the current B std.
+    Options
+        --compiler-arg<arg>                            Pass a compiler-specific argument (e.g., -C linker_args='-s')
+        -h, --help                                     Display this information
+        --include<path>                                Add a directory to the include path
+        --linker-arg<arg>                              Pass an argument to the linker
+        -o <file>, --output <file>                     Place the output into <file>                                        |a.out|
+        --std<std>                                     Specify language standard (B, Bx)                                   |Bx|
+        -t <backend/target>, --target <backend/target> Set the backend and target ABI (e.g., llvm/x86_64-linux-musl)       |qbe|
 
-  Warning Flags
-    -Wall                  Enable most warnings.
-    -Wno-all               Disable all warnings.
-    -W<warnings>           Enable a specific warnings.
-    -Wno-<warnings>        Disable a specific warnings.
-    Available warnings:
-  c-esc                Warn on usage of C-style '\' escapes.                                       [x]
-  b-esc                Warn on usage of B-style '*' escapes.                                       [x]
-  b-ops                Warn on usage of B-style assignment operators like '=+'.                    [x]
-  c-ops                Warn on usage of C-style assignment operators like '+='.                    [x]
-  u-esc                Warn on unrecognized character escape sequences.                            [x]
-  truncated-char       Warn when a character escape value is truncated.                            [x]
-  long-char-const      Warn when a multi-character constant is too long for a word.                [x]
-  c-comments           Warn on usage of non-standard C-style '//' comments.                        [-]
-  overflow             Warn when an integer constant is out of range for its type.                 [x]
-  pedantic             Issue all warnings demanded by the strict standard.                         [-]
-  unreachable-code     Warn about code that will never be executed.                                [x]
-  implicit-decl        Warn about implicit function or variable declarations.                      [x]
-  type                 Warn about type mismatches in expressions and assignments.                  [x]
-  extra                Enable extra miscellaneous warnings.                                        [x]
+    Feature Flags
+        -F<feature flag>                               Enable a specific feature flag
+        -Fno-<feature flag>                            Disable a specific feature flag
+    Available feature flags:
+        allow-uninitialized                            Allow declarations without an initializer (`var;` or `auto var;`).  |x|
+        asm                                            Allow `__asm__` blocks for inline assembly.                         |x|
+        b-esc                                          Recognize B-style '*' character escapes.                            |-|
+        b-ops                                          Recognize B-style assignment operators like '=+'.                   |-|
+        bx-decl                                        Enable Bx-style `auto name = val` declarations.                     |x|
+        c-comments                                     Recognize C-style '//' line comments.                               |x|
+        c-esc                                          Recognize C-style '\' character escapes.                            |x|
+        c-ops                                          Recognize C-style assignment operators like '+='.                   |x|
+        continue                                       Allow the Bx keyword `continue` to be used.                         |x|
+        extrn                                          Allow the 'extrn' keyword.                                          |x|
+        no-directives                                  Disable `// [b]:` directives.                                       |-|
+        short-decl                                     Enable Bx-style short declaration `:=`.                             |x|
+        strict-decl                                    Require all declarations to be initialized.                         |-|
+        typed                                          Enable the Bx opt-in & backwards-compatible type system.            |x|
 
-  Feature Flags
-    -F<features>           Enable a specific features.
-    -Fno-<features>        Disable a specific features.
-    Available features:
-  extrn                Allow the 'extrn' keyword.                                                  [x]
-  asm                  Allow `__asm__` blocks for inline assembly.                                 [x]
-  b-esc                Recognize B-style '*' character escapes.                                    [-]
-  c-esc                Recognize C-style '\' character escapes.                                    [x]
-  b-ops                Recognize B-style assignment operators like '=+'.                           [-]
-  c-ops                Recognize C-style assignment operators like '+='.                           [x]
-  c-comments           Recognize C-style '//' line comments.                                       [x]
-  typed                Enable the Bx opt-in & backwards-compatible type system.                    [x]
-  short-decl           Enable Bx-style short declaration `:=`.                                     [x]
-  bx-decl              Enable Bx-style `auto name = val` declarations.                             [x]
-  allow-uninitialized  Allow declarations without an initializer (`var;` or `auto var;`).          [x]
-  strict-decl          Require all declarations to be initialized.                                 [-]
-  no-directives        Disable `// [b]:` directives.                                               [-]
-  continue             Allow the Bx keyword `continue` to be used.                                 [x]
-
+    Warning Flags
+        -W<warning flag>                               Enable a specific warning flag
+        -Wno-<warning flag>                            Disable a specific warning flag
+    Available Warning Flags:
+        b-esc                                          Warn on usage of B-style '*' escapes.                               |x|
+        b-ops                                          Warn on usage of B-style assignment operators like '=+'.            |x|
+        c-comments                                     Warn on usage of non-standard C-style '//' comments.                |-|
+        c-esc                                          Warn on usage of C-style '\' escapes.                               |x|
+        c-ops                                          Warn on usage of C-style assignment operators like '+='.            |x|
+        extra                                          Enable extra miscellaneous warnings.                                |x|
+        implicit-decl                                  Warn about implicit function or variable declarations.              |x|
+        long-char-const                                Warn when a multi-character constant is too long for a word.        |x|
+        overflow                                       Warn when an integer constant is out of range for its type.         |x|
+        pedantic                                       Issue all warnings demanded by the strict standard.                 |-|
+        truncated-char                                 Warn when a character escape value is truncated.                    |x|
+        type                                           Warn about type mismatches in expressions and assignments.          |x|
+        u-esc                                          Warn on unrecognized character escape sequences.                    |x|
+        unreachable-code                               Warn about code that will never be executed.                        |x|
 ]~/Documents/TrulyMine/gbc@ 
 ```
 
 ### Progress Report:
 - Capable of passing all tests
-- Capable of compiling donut.b
-- Capable of compiling snake.b
-- Capable of compiling raylib.b (just remember to link with Raylib via `-L -lraylib`)
-- Capable of compiling langtons_ants.b
-- Capable of compiling brainfck.b
+- Capable of compiling all examples. Producing the same output as the reference B compiler, against the same STDIN and argument inputs.
 - Etc, these are just the most impressive examples
 - I added a completely opt-in type system. It uses type first declarations like C, and uses the Go type names. (can also be used with strict B via `-std=B -Ftyped`, the syntax is backwards compatible. Its so reliable it comes enabled by default.)
 - `gbc` will warn about poorly written code. TODO: Convert these warnings into annotations that offer suggestions.
-- I'm working on adding support for alternative backends. QBE will remain as the default, but there should be other options as well, including a C one. (TODO: Expose GOABI0 target that libQBE provides)
-  - UPDATE: LLVM target will be made available soon. I'm also making progress towards achieving full cross-compilation.
+- Portable and with multiple backends:
+  - QBE (default, via modernc.org/libQBE, a pure Go version of QBE)
+  - LLVM (via `llc`)
+  - TODO: GameBoy Color Target... Coming soon!!!
 
 ## Demo
 <img width="1920" height="1080" alt="RayLib B demo" src="https://github.com/user-attachments/assets/ed941fc1-0754-4978-98fb-13ff2774b880" />
