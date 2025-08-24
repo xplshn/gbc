@@ -75,16 +75,14 @@ For more details refer to <https://github.com/xplshn/gbc>
 
 ### Progress Report:
 - Capable of passing all tests
-- Capable of compiling donut.b
-- Capable of compiling snake.b
-- Capable of compiling raylib.b (just remember to link with Raylib via `-L -lraylib`)
-- Capable of compiling langtons_ants.b
-- Capable of compiling brainfck.b
+- Capable of compiling all examples. Producing the same output as the reference B compiler, against the same STDIN and argument inputs.
 - Etc, these are just the most impressive examples
 - I added a completely opt-in type system. It uses type first declarations like C, and uses the Go type names. (can also be used with strict B via `-std=B -Ftyped`, the syntax is backwards compatible. Its so reliable it comes enabled by default.)
 - `gbc` will warn about poorly written code. TODO: Convert these warnings into annotations that offer suggestions.
-- I'm working on adding support for alternative backends. QBE will remain as the default, but there should be other options as well, including a C one. (TODO: Expose GOABI0 target that libQBE provides)
-  - UPDATE: LLVM target will be made available soon. I'm also making progress towards achieving full cross-compilation.
+- Portable and with multiple backends:
+  - QBE (default, via modernc.org/libQBE, a pure Go version of QBE)
+  - LLVM (via `llc`)
+  - TODO: GameBoy Color Target... Coming soon!!!
 
 ## Demo
 <img width="1920" height="1080" alt="RayLib B demo" src="https://github.com/user-attachments/assets/ed941fc1-0754-4978-98fb-13ff2774b880" />
