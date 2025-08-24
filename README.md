@@ -54,8 +54,8 @@ This compiler is a project aiming to make a valid B compiler, with _optional_ sy
         b-esc                                          Warn on usage of B-style '*' escapes.                               |x|
         b-ops                                          Warn on usage of B-style assignment operators like '=+'.            |x|
         c-comments                                     Warn on usage of non-standard C-style '//' comments.                |-|
-        c-esc                                          Warn on usage of C-style '\' escapes.                               |x|
-        c-ops                                          Warn on usage of C-style assignment operators like '+='.            |x|
+        c-esc                                          Warn on usage of C-style '\' escapes.                               |-|
+        c-ops                                          Warn on usage of C-style assignment operators like '+='.            |-|
         extra                                          Enable extra miscellaneous warnings.                                |x|
         implicit-decl                                  Warn about implicit function or variable declarations.              |x|
         long-char-const                                Warn when a multi-character constant is too long for a word.        |x|
