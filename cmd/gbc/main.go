@@ -75,7 +75,7 @@ func main() {
 	fs := app.FlagSet
 	fs.String(&outFile, "output", "o", "a.out", "Place the output into <file>", "file")
 	fs.String(&std, "std", "", "Bx", "Specify language standard (B, Bx)", "std")
-	fs.String(&target, "target", "t", "", "Set the backend and target ABI (e.g., llvm/x86_64-linux-gnu)", "backend/target")
+	fs.String(&target, "target", "t", "qbe", "Set the backend and target ABI (e.g., llvm/x86_64-linux-gnu)", "backend/target")
 	fs.List(&linkerArgs, "linker-arg", "", []string{}, "Pass an argument to the linker", "arg")
 	fs.List(&compilerArgs, "compiler-arg", "", []string{}, "Pass a compiler-specific argument (e.g., -C linker_args='-s')", "arg")
 	fs.List(&userIncludePaths, "include", "", []string{}, "Add a directory to the include path", "path")
