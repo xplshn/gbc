@@ -46,13 +46,13 @@ const (
 	Directive
 )
 
-// Node represents a node in the Abstract Syntax Tree.
+// Node represents a node in the Abstract Syntax Tree
 type Node struct {
 	Type   NodeType
 	Tok    token.Token
 	Parent *Node
 	Data   interface{}
-	Typ    *BxType // Set by the type checker.
+	Typ    *BxType // Set by the type checker
 }
 
 type BxTypeKind int
@@ -329,62 +329,30 @@ func FoldConstants(node *Node) *Node {
 			var res int64
 			folded := true
 			switch d.Op {
-			case token.Plus:
-				res = l + r
-			case token.Minus:
-				res = l - r
-			case token.Star:
-				res = l * r
-			case token.And:
-				res = l & r
-			case token.Or:
-				res = l | r
-			case token.Xor:
-				res = l ^ r
-			case token.Shl:
-				res = l << uint64(r)
-			case token.Shr:
-				res = l >> uint64(r)
-			case token.EqEq:
-				if l == r {
-					res = 1
-				}
-			case token.Neq:
-				if l != r {
-					res = 1
-				}
-			case token.Lt:
-				if l < r {
-					res = 1
-				}
-			case token.Gt:
-				if l > r {
-					res = 1
-				}
-			case token.Lte:
-				if l <= r {
-					res = 1
-				}
-			case token.Gte:
-				if l >= r {
-					res = 1
-				}
+			case token.Plus: res = l + r
+			case token.Minus: res = l - r
+			case token.Star: res = l * r
+			case token.And: res = l & r
+			case token.Or: res = l | r
+			case token.Xor: res = l ^ r
+			case token.Shl: res = l << uint64(r)
+			case token.Shr: res = l >> uint64(r)
+			case token.EqEq: if l == r { res = 1 }
+			case token.Neq: if l != r { res = 1 }
+			case token.Lt: if l < r { res = 1 }
+			case token.Gt: if l > r { res = 1 }
+			case token.Lte: if l <= r { res = 1 }
+			case token.Gte: if l >= r {	res = 1	}
 			case token.Slash:
-				if r == 0 {
-					util.Error(node.Tok, "Compile-time division by zero.")
-				}
+				if r == 0 { util.Error(node.Tok, "Compile-time division by zero.") }
 				res = l / r
 			case token.Rem:
-				if r == 0 {
-					util.Error(node.Tok, "Compile-time modulo by zero.")
-				}
+				if r == 0 { util.Error(node.Tok, "Compile-time modulo by zero.") }
 				res = l % r
 			default:
 				folded = false
 			}
-			if folded {
-				return NewNumber(node.Tok, res)
-			}
+			if folded { return NewNumber(node.Tok, res) }
 		}
 	case UnaryOp:
 		d := node.Data.(UnaryOpNode)
@@ -393,22 +361,14 @@ func FoldConstants(node *Node) *Node {
 			var res int64
 			folded := true
 			switch d.Op {
-			case token.Minus:
-				res = -val
-			case token.Complement:
-				res = ^val
-			case token.Not:
-				if val == 0 {
-					res = 1
-				}
+			case token.Minus: res = -val
+			case token.Complement: res = ^val
+			case token.Not: if val == 0 { res = 1 }
 			default:
 				folded = false
 			}
-			if folded {
-				return NewNumber(node.Tok, res)
-			}
+			if folded { return NewNumber(node.Tok, res) }
 		}
 	}
-
 	return node
 }

@@ -1,3 +1,6 @@
+// indentation logic: vibecoded
+// bad logic: written by me
+// sucks: absolutely, but instead of bitching about it, open a PR. Thanks.
 package main
 
 import (
@@ -426,9 +429,9 @@ func compareRuntimeResults(file string, refResult, targetResult *TargetResult) *
 		refStderr := filterOutput(refRun.Result.Stderr, ignoredSubstrings)
 		targetStderr := filterOutput(targetRun.Result.Stderr, ignoredSubstrings)
 
-		// Normalize by replacing binary paths (argv[0]) if they exist.
-		// This handles cases where a program prints its own name.
-		// We replace both the full path and the basename with a generic placeholder.
+		// Normalize by replacing binary paths (argv[0]) if they exist
+		// This handles cases where a program prints its own name
+		// We replace both the full path and the basename with a generic placeholder
 		const binaryPlaceholder = "__BINARY__"
 		if refResult.BinaryPath != "" {
 			refStdout = strings.ReplaceAll(refStdout, refResult.BinaryPath, binaryPlaceholder)
@@ -447,13 +450,13 @@ func compareRuntimeResults(file string, refResult, targetResult *TargetResult) *
 
 		if refStdout != targetStdout {
 			failed = true
-			// Show the diff of the original, unmodified output for clarity.
+			// Show the diff of the original, unmodified output for clarity
 			diffs.WriteString(fmt.Sprintf("Run '%s' STDOUT mismatch:\n%s", refRun.Name, cmp.Diff(refRun.Result.Stdout, targetRun.Result.Stdout)))
 		}
 
 		if refStderr != targetStderr {
 			failed = true
-			// Show the diff of the original, unmodified output for clarity.
+			// Show the diff of the original, unmodified output for clarity
 			diffs.WriteString(fmt.Sprintf("Run '%s' STDERR mismatch:\n%s", refRun.Name, cmp.Diff(refRun.Result.Stderr, targetRun.Result.Stderr)))
 		}
 	}
@@ -536,8 +539,8 @@ func compileAndRun(compiler string, compilerArgs []string, sourceFile, tempDir, 
 		return &TargetResult{Compile: compileResult}, fmt.Errorf("compilation succeeded but binary was not created at %s", binaryPath)
 	}
 
-	// Probe to see if the binary waits for stdin by running it with a very short timeout.
-	// If it times out, it's likely waiting for input.
+	// Probe to see if the binary waits for stdin by running it with a very short timeout
+	// If it times out, it's likely waiting for input
 	probeCtx, probeCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer probeCancel()
 	probeResult := executeCommand(probeCtx, binaryPath, "")
@@ -573,8 +576,8 @@ func compileAndRun(compiler string, compilerArgs []string, sourceFile, tempDir, 
 		var inputData string
 		var unstableOutput bool
 
-		// If the program is detected to read from stdin, we join the args to form the input string.
-		// Otherwise, we pass them as command-line arguments.
+		// If the program is detected to read from stdin, we join the args to form the input string
+		// Otherwise, we pass them as command-line arguments
 		if readsStdin {
 			inputData = strings.Join(args, "\n")
 			if len(args) > 0 {
@@ -599,9 +602,9 @@ func compileAndRun(compiler string, compilerArgs []string, sourceFile, tempDir, 
 
 				if firstRunResult.ExitCode != runResult.ExitCode || filteredFirstStdout != filteredCurrentStdout || filteredFirstStderr != filteredCurrentStderr {
 					unstableOutput = true
-					// Inconsistent output. We'll use the first run's result but mark it.
+					// Inconsistent output. We'll use the first run's result but mark it
 					// We stop iterating because finding the "fastest" run is meaningless
-					// if the output is different each time.
+					// if the output is different each time
 					break
 				}
 			}
@@ -628,7 +631,7 @@ func compileAndRun(compiler string, compilerArgs []string, sourceFile, tempDir, 
 	return &TargetResult{Compile: compileResult, Runs: runResults, BinaryPath: binaryPath}, nil
 }
 
-// filterOutput removes lines containing any of the given substrings.
+// filterOutput removes lines containing any of the given substrings
 func filterOutput(output string, ignoredSubstrings []string) string {
 	if len(ignoredSubstrings) == 0 || output == "" {
 		return output
@@ -664,7 +667,7 @@ func printSummary(results []*FileTestResult) {
 	var totalTargetCompile, totalRefCompile, totalTargetRuntime, totalRefRuntime time.Duration
 	var comparedFileCount, runtimeFileCount int
 
-	// Pre-calculate max lengths for alignment.
+	// Pre-calculate max lengths for alignment
 	var maxTestNameLen int
 	targetName := filepath.Base(*targetCompiler)
 	refName := filepath.Base(*refCompiler)
@@ -685,7 +688,7 @@ func printSummary(results []*FileTestResult) {
 		}
 	}
 
-	// Only calculate maxTestNameLen if in verbose mode, as it's only used there.
+	// Only calculate maxTestNameLen if in verbose mode, as it's only used there
 	if *verbose {
 		for _, result := range results {
 			isBothFailed := result.Message == "Both compilers failed to compile as expected"
@@ -768,11 +771,11 @@ func printSummary(results []*FileTestResult) {
 
 			var summaryPadding string
 			if *verbose && maxTestNameLen > 0 {
-				// Aligns the summary block with the performance block in verbose mode.
+				// Aligns the summary block with the performance block in verbose mode
 				// Prefix is "  [PASS] " (8) + name (maxTestNameLen) + " " (1)
 				summaryPadding = strings.Repeat(" ", 8+maxTestNameLen+1)
 			} else {
-				// In non-verbose mode, just indent slightly.
+				// In non-verbose mode, just indent slightly
 				summaryPadding = "  "
 			}
 

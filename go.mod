@@ -7,7 +7,8 @@ toolchain go1.24.6
 require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/google/go-cmp v0.7.0
-	modernc.org/libqbe v0.3.21
+	golang.org/x/term v0.34.0
+	modernc.org/libqbe v0.3.23
 )
 
 require (
@@ -17,7 +18,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
+	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	modernc.org/goabi0 v0.2.0 // indirect
 	modernc.org/libc v1.66.7 // indirect

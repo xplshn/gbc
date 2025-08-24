@@ -363,6 +363,18 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 	switch d := node.Data.(type) {
 	case ast.AssignNode:
 		lhsType, rhsType := tc.checkExpr(d.Lhs), tc.checkExpr(d.Rhs)
+
+		// Handle type promotion on assignment (e.g., int var = ptr_val).
+		// This is common in B where variables can change type implicitly.
+		isLhsScalar := tc.isScalarType(lhsType) && lhsType.Kind != ast.TYPE_POINTER
+		isRhsPtr := rhsType != nil && rhsType.Kind == ast.TYPE_POINTER
+		if isLhsScalar && isRhsPtr && d.Lhs.Type == ast.Ident {
+			if sym := tc.findSymbol(d.Lhs.Data.(ast.IdentNode).Name, false); sym != nil {
+				sym.Type = rhsType // Promote the variable's type to the pointer type
+				lhsType = rhsType
+			}
+		}
+
 		if d.Lhs.Type == ast.Subscript {
 			subscript := d.Lhs.Data.(ast.SubscriptNode)
 			arrayExpr := subscript.Array
@@ -423,10 +435,17 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 	case ast.TernaryNode:
 		tc.checkExprAsCondition(d.Cond)
 		thenType, elseType := tc.checkExpr(d.ThenExpr), tc.checkExpr(d.ElseExpr)
-		if !tc.areTypesCompatible(thenType, elseType, nil) {
+		if !tc.areTypesCompatible(thenType, elseType, d.ElseExpr) {
 			util.Warn(tc.cfg, config.WarnType, node.Tok, "Type mismatch in ternary expression branches ('%s' vs '%s')", typeToString(thenType), typeToString(elseType))
 		}
-		typ = thenType
+		// Type promotion rules for ternary operator: pointer types take precedence.
+		if thenType != nil && thenType.Kind == ast.TYPE_POINTER {
+			typ = thenType
+		} else if elseType != nil && elseType.Kind == ast.TYPE_POINTER {
+			typ = elseType
+		} else {
+			typ = thenType // Default to 'then' type if no pointers involved
+		}
 	case ast.SubscriptNode:
 		arrayType, indexType := tc.checkExpr(d.Array), tc.checkExpr(d.Index)
 		if !tc.isIntegerType(indexType) && indexType.Kind != ast.TYPE_UNTYPED {

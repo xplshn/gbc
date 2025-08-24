@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xplshn/gbc/pkg/cli"
 	"modernc.org/libqbe"
 )
 
@@ -54,17 +55,48 @@ type Info struct {
 	Description string
 }
 
-type Config struct {
-	Features       map[Feature]Info
-	Warnings       map[Warning]Info
-	FeatureMap     map[string]Feature
-	WarningMap     map[string]Warning
-	StdName        string
-	TargetArch     string
-	QbeTarget      string
+// Backend-specific properties
+type Target struct {
+	GOOS           string
+	GOARCH         string
+	BackendName    string // "qbe", "llvm"
+	BackendTarget  string // "amd64_sysv", "x86_64-unknown-linux-musl"
+	WordSize       int
+	WordType       string // QBE type char
+	StackAlignment int
+}
+
+var archTranslations = map[string]string{
+	"amd64":   "x86_64",
+	"386":     "i686",
+	"arm64":   "aarch64",
+	"arm":     "arm",
+	"riscv64": "riscv64",
+	"x86_64":  "amd64",
+	"i386":    "386",
+	"i686":    "386",
+	"aarch64": "arm64",
+}
+
+var archProperties = map[string]struct {
 	WordSize       int
 	WordType       string
 	StackAlignment int
+}{
+	"amd64":   {WordSize: 8, WordType: "l", StackAlignment: 16},
+	"arm64":   {WordSize: 8, WordType: "l", StackAlignment: 16},
+	"386":     {WordSize: 4, WordType: "w", StackAlignment: 8},
+	"arm":     {WordSize: 4, WordType: "w", StackAlignment: 8},
+	"riscv64": {WordSize: 8, WordType: "l", StackAlignment: 16},
+}
+
+type Config struct {
+	Features   map[Feature]Info
+	Warnings   map[Warning]Info
+	FeatureMap map[string]Feature
+	WarningMap map[string]Warning
+	StdName    string
+	Target
 }
 
 func NewConfig() *Config {
@@ -120,28 +152,70 @@ func NewConfig() *Config {
 	return cfg
 }
 
-// SetTarget configures the compiler for a specific architecture and QBE target.
-func (c *Config) SetTarget(goos, goarch, qbeTarget string) {
-	if qbeTarget == "" {
-		c.QbeTarget = libqbe.DefaultTarget(goos, goarch)
-		fmt.Fprintf(os.Stderr, "gbc: info: no target specified, defaulting to host target '%s'\n", c.QbeTarget)
-	} else {
-		c.QbeTarget = qbeTarget
-		fmt.Fprintf(os.Stderr, "gbc: info: using specified target '%s'\n", c.QbeTarget)
+// SetTarget configures the compiler for a specific architecture and backend target
+func (c *Config) SetTarget(hostOS, hostArch, targetFlag string) {
+	// Init with host defaults
+	c.GOOS, c.GOARCH, c.BackendName = hostOS, hostArch, "qbe"
+
+	// Parse target flag: <backend>/<target_string>
+	if targetFlag != "" {
+		parts := strings.SplitN(targetFlag, "/", 2)
+		c.BackendName = parts[0]
+		if len(parts) > 1 {
+			c.BackendTarget = parts[1]
+		}
 	}
 
-	c.TargetArch = goarch
+	// Valid QBE targets |https://pkg.go.dev/modernc.org/libqbe#hdr-Supported_targets|
+	validQBETargets := map[string]string{
+		"amd64_apple": "amd64",
+		"amd64_sysv":  "amd64",
+		"arm64":       "arm64",
+		"arm64_apple": "arm64",
+		"rv64":        "riscv64",
+	}
 
-	switch c.QbeTarget {
-	case "amd64_sysv", "amd64_apple", "arm64", "arm64_apple", "rv64":
-		c.WordSize, c.WordType, c.StackAlignment = 8, "l", 16
-	case "arm", "rv32":
-		c.WordSize, c.WordType, c.StackAlignment = 4, "w", 8
-	default:
-		fmt.Fprintf(os.Stderr, "gbc: warning: unrecognized or unsupported QBE target '%s'.\n", c.QbeTarget)
+	if c.BackendName == "qbe" {
+		if c.BackendTarget == "" {
+			c.BackendTarget = libqbe.DefaultTarget(hostOS, hostArch)
+			fmt.Fprintf(os.Stderr, "gbc: info: no target specified, defaulting to host target '%s' for backend '%s'\n", c.BackendTarget, c.BackendName)
+		}
+		if goArch, ok := validQBETargets[c.BackendTarget]; ok {
+			c.GOARCH = goArch
+		} else {
+			fmt.Fprintf(os.Stderr, "gbc: warning: unsupported QBE target '%s', defaulting to GOARCH '%s'\n", c.BackendTarget, c.GOARCH)
+		}
+	} else { // llvm
+		if c.BackendTarget == "" {
+			tradArch := archTranslations[hostArch]
+			if tradArch == "" { tradArch = hostArch } // No target architecture specified
+			// TODO: ? Infer env ("musl", "gnu", etc..?)
+			c.BackendTarget = fmt.Sprintf("%s-unknown-%s-unknown", tradArch, hostOS)
+			fmt.Fprintf(os.Stderr, "gbc: info: no target specified, defaulting to host target '%s' for backend '%s'\n", c.BackendTarget, c.BackendName)
+		}
+		parts := strings.Split(c.BackendTarget, "-")
+		if len(parts) > 0 {
+			if goArch, ok := archTranslations[parts[0]]; ok {
+				c.GOARCH = goArch
+			} else {
+				c.GOARCH = parts[0]
+			}
+		}
+		if len(parts) > 2 && parts[2] != "unknown" {
+			c.GOOS = parts[2]
+		}
+	}
+
+	// Set architecture-specific properties
+	if props, ok := archProperties[c.GOARCH]; ok {
+		c.WordSize, c.WordType, c.StackAlignment = props.WordSize, props.WordType, props.StackAlignment
+	} else {
+		fmt.Fprintf(os.Stderr, "gbc: warning: unrecognized architecture '%s'.\n", c.GOARCH)
 		fmt.Fprintf(os.Stderr, "gbc: warning: defaulting to 64-bit properties. Compilation may fail.\n")
 		c.WordSize, c.WordType, c.StackAlignment = 8, "l", 16
 	}
+
+	fmt.Fprintf(os.Stderr, "gbc: info: using backend '%s' with target '%s' (GOOS=%s, GOARCH=%s)\n", c.BackendName, c.BackendTarget, c.GOOS, c.GOARCH)
 }
 
 func (c *Config) SetFeature(ft Feature, enabled bool) {
@@ -212,71 +286,63 @@ func (c *Config) ApplyStd(stdName string) error {
 	return nil
 }
 
-func (c *Config) applyFlag(flag string) {
-	trimmed := strings.TrimPrefix(flag, "-")
-	isNo := strings.HasPrefix(trimmed, "Wno-") || strings.HasPrefix(trimmed, "Fno-")
-	enable := !isNo
-
-	var name string
-	var isWarning bool
-
-	switch {
-	case strings.HasPrefix(trimmed, "W"):
-		name = strings.TrimPrefix(trimmed, "W")
-		if isNo {
-			name = strings.TrimPrefix(name, "no-")
-		}
-		isWarning = true
-	case strings.HasPrefix(trimmed, "F"):
-		name = strings.TrimPrefix(trimmed, "F")
-		if isNo {
-			name = strings.TrimPrefix(name, "no-")
-		}
-	default:
-		name = trimmed
-		isWarning = true
-	}
-
-	if name == "all" && isWarning {
-		for i := Warning(0); i < WarnCount; i++ {
-			if i != WarnPedantic {
-				c.SetWarning(i, enable)
-			}
-		}
-		return
-	}
-
-	if name == "pedantic" && isWarning {
-		c.SetWarning(WarnPedantic, true)
-		return
-	}
-
-	if isWarning {
-		if w, ok := c.WarningMap[name]; ok {
-			c.SetWarning(w, enable)
-		}
-	} else {
-		if f, ok := c.FeatureMap[name]; ok {
-			c.SetFeature(f, enable)
-		}
-	}
-}
-
-func (c *Config) ProcessFlags(visitFlag func(fn func(name string))) {
-	visitFlag(func(name string) {
-		if name == "Wall" || name == "Wno-all" || name == "pedantic" {
-			c.applyFlag("-" + name)
-		}
-	})
-	visitFlag(func(name string) {
-		if name != "Wall" && name != "Wno-all" && name != "pedantic" {
-			c.applyFlag("-" + name)
-		}
-	})
-}
-
+// ProcessDirectiveFlags parses flags from a directive string using a temporary FlagSet.
 func (c *Config) ProcessDirectiveFlags(flagStr string) {
-	for _, flag := range strings.Fields(flagStr) {
-		c.applyFlag(flag)
+	fs := cli.NewFlagSet("directive")
+	var warningFlags, featureFlags []cli.FlagGroupEntry
+
+	// Build warning flags for the directive parser.
+	for i := Warning(0); i < WarnCount; i++ {
+		pEnable := new(bool)
+		pDisable := new(bool)
+		entry := cli.FlagGroupEntry{Name: c.Warnings[i].Name, Prefix: "W", Enabled: pEnable, Disabled: pDisable}
+		warningFlags = append(warningFlags, entry)
+		fs.Bool(entry.Enabled, entry.Prefix+entry.Name, "", false, "")
+		fs.Bool(entry.Disabled, entry.Prefix+"no-"+entry.Name, "", false, "")
+	}
+
+	// Build feature flags for the directive parser.
+	for i := Feature(0); i < FeatCount; i++ {
+		pEnable := new(bool)
+		pDisable := new(bool)
+		entry := cli.FlagGroupEntry{Name: c.Features[i].Name, Prefix: "F", Enabled: pEnable, Disabled: pDisable}
+		featureFlags = append(featureFlags, entry)
+		fs.Bool(entry.Enabled, entry.Prefix+entry.Name, "", false, "")
+		fs.Bool(entry.Disabled, entry.Prefix+"no-"+entry.Name, "", false, "")
+	}
+
+	// The cli parser expects arguments to start with '-'.
+	args := strings.Fields(flagStr)
+	processedArgs := make([]string, len(args))
+	for i, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			processedArgs[i] = "-" + arg
+		} else {
+			processedArgs[i] = arg
+		}
+	}
+
+	if err := fs.Parse(processedArgs); err != nil {
+		// Silently ignore errors in directives, as they shouldn't halt compilation.
+		return
+	}
+
+	// Apply parsed directive flags to the configuration.
+	for i, entry := range warningFlags {
+		if *entry.Enabled {
+			c.SetWarning(Warning(i), true)
+		}
+		if *entry.Disabled {
+			c.SetWarning(Warning(i), false)
+		}
+	}
+
+	for i, entry := range featureFlags {
+		if *entry.Enabled {
+			c.SetFeature(Feature(i), true)
+		}
+		if *entry.Disabled {
+			c.SetFeature(Feature(i), false)
+		}
 	}
 }
