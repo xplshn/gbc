@@ -20,13 +20,14 @@ This compiler is a project aiming to make a valid B compiler, with _optional_ sy
         A compiler for the B programming language and its extensions, written in Go.
 
     Options
-        --compiler-arg<arg>                            Pass a compiler-specific argument (e.g., -C linker_args='-s')
+        -C <arg>, --compiler-arg <arg>                 Pass a compiler-specific argument (e.g., -C linker_args='-s').
         -h, --help                                     Display this information
-        --include<path>                                Add a directory to the include path
-        --linker-arg<arg>                              Pass an argument to the linker
-        -o <file>, --output <file>                     Place the output into <file>                                        |a.out|
+        -I <path>, --include <path>                    Add a directory to the include path.
+        -L <arg>, --linker-arg <arg>                   Pass an argument to the linker.
+        -o <file>, --output <file>                     Place the output into <file>.                                       |a.out|
+        --pedantic                                     Issue all warnings demanded by the current B std.
         --std<std>                                     Specify language standard (B, Bx)                                   |Bx|
-        -t <backend/target>, --target <backend/target> Set the backend and target ABI (e.g., llvm/x86_64-linux-musl)       |qbe|
+        -t <backend/target>, --target <backend/target> Set the backend and target ABI.                                     |qbe|
 
     Feature Flags
         -F<feature flag>                               Enable a specific feature flag
