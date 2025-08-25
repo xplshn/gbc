@@ -2,9 +2,9 @@ OUT = gbc
 GTEST = gtest
 
 GO = go
-ifneq ($(shell command -v gore 2>/dev/null),)
-GO = gore
-endif
+#ifneq ($(shell command -v gore 2>/dev/null),)
+#GO = gore
+#endif
 
 # `gore` is my wrapper for `go` that adds beautiful errors like this one:
 #     # $ gore build
@@ -45,7 +45,7 @@ ARCH := $(shell uname -m)
 OS := $(shell uname -s)
 LIBB := ./lib/b/$(ARCH)-$(OS).b
 
-badFiles := donut.b
+badFiles := raylib.b donut.b
 
 define filter_files
 files=""; \
@@ -62,9 +62,9 @@ endef
 test: all $(GTEST)
 	@echo "Running tests..."
 	@files=$$( $(call filter_files,tests/*.b*,tests) ); \
-	./cmd/$(GTEST)/$(GTEST) --test-files="$$files" --target-args="$(LIBB)" -v
+	./cmd/$(GTEST)/$(GTEST) --test-files="$$files" --target-args="$(GBCFLAGS) $(LIBB)" -v
 
 examples: all $(GTEST)
 	@echo "Running examples..."
 	@files=$$( $(call filter_files,examples/*.b*,examples) ); \
-	./cmd/$(GTEST)/$(GTEST) --test-files="$$files" --target-args="$(LIBB)" -v --ignore-lines="xs_items"
+	./cmd/$(GTEST)/$(GTEST) --test-files="$$files" --target-args="$(GBCFLAGS) $(LIBB)" -v --ignore-lines="xs_items"

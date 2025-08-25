@@ -132,7 +132,9 @@ func (p *Parser) parseTopLevel() *ast.Node {
 		directiveVal := currentTok.Value
 		if strings.HasPrefix(directiveVal, "requires:") {
 			flagStr := strings.TrimSpace(strings.TrimPrefix(directiveVal, "requires:"))
-			p.cfg.ProcessDirectiveFlags(flagStr)
+			if err := p.cfg.ProcessDirectiveFlags(flagStr, currentTok); err != nil {
+				util.Error(currentTok, err.Error())
+			}
 		} else {
 			util.Error(currentTok, "Unknown directive '[b]: %s'", directiveVal)
 		}
@@ -629,9 +631,7 @@ func (p *Parser) parseFuncDecl(returnType *ast.BxType, nameToken token.Token) *a
 
 	if returnType == nil {
 		returnType = ast.TypeUntyped
-		if isTyped {
-			returnType = ast.TypeInt
-		}
+		if isTyped { returnType = ast.TypeInt }
 	}
 
 	return ast.NewFuncDecl(nameToken, name, params, body, hasVarargs, isTyped, returnType)
@@ -710,9 +710,7 @@ func (p *Parser) parseTypedVarOrFuncDecl(isTopLevel bool) *ast.Node {
 	p.expect(token.Ident, "Expected identifier after type.")
 	nameToken := p.previous
 
-	if p.check(token.LParen) {
-		return p.parseFuncDecl(declType, nameToken)
-	}
+	if p.check(token.LParen) { return p.parseFuncDecl(declType, nameToken) }
 
 	return p.parseTypedVarDeclBody(startTok, declType, nameToken)
 }
@@ -757,16 +755,12 @@ func (p *Parser) parseTypedVarDeclBody(startTok token.Token, declType *ast.BxTyp
 
 	p.expect(token.Semi, "Expected ';' after typed variable declaration.")
 
-	if len(decls) == 1 {
-		return decls[0]
-	}
+	if len(decls) == 1 { return decls[0] }
 	return ast.NewMultiVarDecl(startTok, decls)
 }
 
 func (p *Parser) parseType() *ast.BxType {
-	if !p.isTypedPass {
-		return nil
-	}
+	if !p.isTypedPass { return nil }
 
 	isConst := p.match(token.Const)
 	var baseType *ast.BxType
@@ -822,9 +816,7 @@ func (p *Parser) parseType() *ast.BxType {
 		}
 	}
 
-	for p.match(token.Star) {
-		baseType = &ast.BxType{Kind: ast.TYPE_POINTER, Base: baseType}
-	}
+	for p.match(token.Star) { baseType = &ast.BxType{Kind: ast.TYPE_POINTER, Base: baseType} }
 
 	if isConst {
 		newType := *baseType
@@ -839,9 +831,7 @@ func (p *Parser) parseStructDef() *ast.BxType {
 
 	if p.check(token.Ident) {
 		structType.StructTag = p.current.Value
-		if p.isTypedPass {
-			p.typeNames[structType.StructTag] = true
-		}
+		if p.isTypedPass { p.typeNames[structType.StructTag] = true }
 		p.advance()
 	}
 
@@ -857,9 +847,7 @@ func (p *Parser) parseStructDef() *ast.BxType {
 	}
 
 	p.expect(token.RBrace, "Expected '}' to close struct definition.")
-	if structType.StructTag != "" {
-		structType.Name = structType.StructTag
-	}
+	if structType.StructTag != "" { structType.Name = structType.StructTag }
 	return structType
 }
 
@@ -867,24 +855,14 @@ func (p *Parser) isTypedParameterList() bool {
 	originalPos, originalCurrent := p.pos, p.current
 	defer func() { p.pos, p.current = originalPos, originalCurrent }()
 
-	if p.check(token.RParen) {
-		return false
-	}
-	if p.check(token.Void) && p.peek().Type == token.RParen {
-		return true
-	}
-	if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) {
-		return true
-	}
+	if p.check(token.RParen) { return false }
+	if p.check(token.Void) && p.peek().Type == token.RParen { return true }
+	if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) { return true }
 
 	for {
-		if !p.check(token.Ident) {
-			return false
-		}
+		if !p.check(token.Ident) { return false }
 		p.advance()
-		if !p.match(token.Comma) {
-			break
-		}
+		if !p.match(token.Comma) { break }
 	}
 	return p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) || p.check(token.LBracket) || p.check(token.Star)
 }
@@ -900,9 +878,7 @@ func (p *Parser) parseUntypedParameters() ([]*ast.Node, bool) {
 			}
 			p.expect(token.Ident, "Expected parameter name or '...'.")
 			params = append(params, ast.NewIdent(p.previous, p.previous.Value))
-			if !p.match(token.Comma) {
-				break
-			}
+			if !p.match(token.Comma) { break }
 		}
 	}
 	return params, hasVarargs
@@ -911,18 +887,14 @@ func (p *Parser) parseUntypedParameters() ([]*ast.Node, bool) {
 func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 	var params []*ast.Node
 	var hasVarargs bool
-	if p.check(token.RParen) {
-		return params, false
-	}
+	if p.check(token.RParen) { return params, false }
 	if p.check(token.Void) && p.peek().Type == token.RParen {
 		p.advance()
 		return params, false
 	}
 
 	for {
-		if p.check(token.RParen) {
-			break
-		}
+		if p.check(token.RParen) { break }
 		if p.match(token.Dots) {
 			hasVarargs = true
 			break
@@ -954,50 +926,33 @@ func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 			}
 		}
 
-		if !p.match(token.Comma) {
-			break
-		}
+		if !p.match(token.Comma) { break }
 	}
 	return params, hasVarargs
 }
 
 func getBinaryOpPrecedence(op token.Type) int {
 	switch op {
-	case token.OrOr:
-		return 4
-	case token.AndAnd:
-		return 5
-	case token.Or:
-		return 6
-	case token.Xor:
-		return 7
-	case token.And:
-		return 8
-	case token.EqEq, token.Neq:
-		return 9
-	case token.Lt, token.Gt, token.Lte, token.Gte:
-		return 10
-	case token.Shl, token.Shr:
-		return 11
-	case token.Plus, token.Minus:
-		return 12
-	case token.Star, token.Slash, token.Rem:
-		return 13
-	default:
-		return -1
+	case token.OrOr: return 4
+	case token.AndAnd: return 5
+	case token.Or: return 6
+	case token.Xor: return 7
+	case token.And: return 8
+	case token.EqEq, token.Neq: return 9
+	case token.Lt, token.Gt, token.Lte, token.Gte: return 10
+	case token.Shl, token.Shr: return 11
+	case token.Plus, token.Minus: return 12
+	case token.Star, token.Slash, token.Rem: return 13
+	default: return -1
 	}
 }
 
-func (p *Parser) parseExpr() *ast.Node {
-	return p.parseAssignmentExpr()
-}
+func (p *Parser) parseExpr() *ast.Node { return p.parseAssignmentExpr() }
 
 func (p *Parser) parseAssignmentExpr() *ast.Node {
 	left := p.parseTernaryExpr()
 	if op := p.current.Type; op >= token.Eq && op <= token.EqShr {
-		if !isLValue(left) {
-			util.Error(p.current, "Invalid target for assignment.")
-		}
+		if !isLValue(left) { util.Error(p.current, "Invalid target for assignment.") }
 		tok := p.current
 		p.advance()
 		right := p.parseAssignmentExpr()
@@ -1021,14 +976,10 @@ func (p *Parser) parseTernaryExpr() *ast.Node {
 func (p *Parser) parseBinaryExpr(minPrec int) *ast.Node {
 	left := p.parseUnaryExpr()
 	for {
-		if left == nil {
-			return nil
-		}
+		if left == nil { return nil }
 		op := p.current.Type
 		prec := getBinaryOpPrecedence(op)
-		if prec < minPrec {
-			break
-		}
+		if prec < minPrec { break }
 		opTok := p.current
 		p.advance()
 		right := p.parseBinaryExpr(prec + 1)
@@ -1063,18 +1014,14 @@ func (p *Parser) parseUnaryExpr() *ast.Node {
 func (p *Parser) parsePostfixExpr() *ast.Node {
 	expr := p.parsePrimaryExpr()
 	for {
-		if expr == nil {
-			return nil
-		}
+		if expr == nil { return nil }
 		tok := p.current
 		if p.match(token.LParen) {
 			var args []*ast.Node
 			if !p.check(token.RParen) {
 				for {
 					args = append(args, p.parseAssignmentExpr())
-					if !p.match(token.Comma) {
-						break
-					}
+					if !p.match(token.Comma) { break }
 				}
 			}
 			p.expect(token.RParen, "Expected ')' after function arguments.")
@@ -1088,13 +1035,9 @@ func (p *Parser) parsePostfixExpr() *ast.Node {
 			member := ast.NewIdent(p.previous, p.previous.Value)
 			expr = ast.NewMemberAccess(tok, expr, member)
 		} else if p.match(token.Inc, token.Dec) {
-			if !isLValue(expr) {
-				util.Error(p.previous, "Postfix '++' or '--' requires an l-value.")
-			}
+			if !isLValue(expr) { util.Error(p.previous, "Postfix '++' or '--' requires an l-value.") }
 			expr = ast.NewPostfixOp(p.previous, p.previous.Type, expr)
-		} else {
-			break
-		}
+		} else { break }
 	}
 	return expr
 }
@@ -1105,12 +1048,8 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 		val, _ := strconv.ParseInt(p.previous.Value, 10, 64)
 		return ast.NewNumber(tok, val)
 	}
-	if p.match(token.String) {
-		return ast.NewString(tok, p.previous.Value)
-	}
-	if p.match(token.Ident) {
-		return ast.NewIdent(tok, p.previous.Value)
-	}
+	if p.match(token.String) { return ast.NewString(tok, p.previous.Value) }
+	if p.match(token.Ident) { return ast.NewIdent(tok, p.previous.Value) }
 	if p.match(token.TypeKeyword) {
 		util.Warn(p.cfg, config.WarnExtra, p.previous, "Using keyword 'type' as an identifier.")
 		return ast.NewIdent(tok, "type")
@@ -1145,16 +1084,12 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 }
 
 func (p *Parser) buildSwitchJumpTable(switchNode *ast.Node) {
-	if switchNode == nil || switchNode.Type != ast.Switch {
-		return
-	}
+	if switchNode == nil || switchNode.Type != ast.Switch { return }
 	p.findCasesRecursive(switchNode.Data.(ast.SwitchNode).Body, switchNode)
 }
 
 func (p *Parser) findCasesRecursive(node, switchNode *ast.Node) {
-	if node == nil || (node.Type == ast.Switch && node != switchNode) {
-		return
-	}
+	if node == nil || (node.Type == ast.Switch && node != switchNode) { return }
 
 	swData := switchNode.Data.(ast.SwitchNode)
 
@@ -1174,9 +1109,7 @@ func (p *Parser) findCasesRecursive(node, switchNode *ast.Node) {
 		}
 	} else if node.Type == ast.Default {
 		defData := node.Data.(ast.DefaultNode)
-		if swData.DefaultLabelName != "" {
-			util.Error(node.Tok, "Multiple 'default' labels in one switch statement.")
-		}
+		if swData.DefaultLabelName != "" { util.Error(node.Tok, "Multiple 'default' labels in one switch statement.") }
 		labelName := fmt.Sprintf("@default_%d", node.Tok.Line)
 		swData.DefaultLabelName = labelName
 		defData.QbeLabel = labelName
@@ -1188,17 +1121,10 @@ func (p *Parser) findCasesRecursive(node, switchNode *ast.Node) {
 	case ast.IfNode:
 		p.findCasesRecursive(d.ThenBody, switchNode)
 		p.findCasesRecursive(d.ElseBody, switchNode)
-	case ast.WhileNode:
-		p.findCasesRecursive(d.Body, switchNode)
-	case ast.BlockNode:
-		for _, stmt := range d.Stmts {
-			p.findCasesRecursive(stmt, switchNode)
-		}
-	case ast.LabelNode:
-		p.findCasesRecursive(d.Stmt, switchNode)
-	case ast.CaseNode:
-		p.findCasesRecursive(d.Body, switchNode)
-	case ast.DefaultNode:
-		p.findCasesRecursive(d.Body, switchNode)
+	case ast.WhileNode: p.findCasesRecursive(d.Body, switchNode)
+	case ast.BlockNode: for _, stmt := range d.Stmts { p.findCasesRecursive(stmt, switchNode) }
+	case ast.LabelNode: p.findCasesRecursive(d.Stmt, switchNode)
+	case ast.CaseNode: p.findCasesRecursive(d.Body, switchNode)
+	case ast.DefaultNode: p.findCasesRecursive(d.Body, switchNode)
 	}
 }

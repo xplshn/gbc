@@ -1,4 +1,4 @@
-// package cli is ugly and tries but fails miserable at being a general-purpose, usable CLi library
+// package cli is ugly and tries but fails miserably at being a general-purpose, usable CLi library
 package cli
 
 import (
@@ -152,17 +152,21 @@ func (f *FlagSet) Special(p *[]string, prefix, usage, expectedType string) {
 	f.specialPrefix[prefix] = f.flags[prefix]
 }
 
-func (f *FlagSet) AddFlagGroup(name, description, groupType, availableFlagsHeader string, entries []FlagGroupEntry) {
+// DefineGroupFlags registers the enable/disable flags for a set of flag group entries.
+func (f *FlagSet) DefineGroupFlags(entries []FlagGroupEntry) {
 	for i := range entries {
 		if entries[i].Enabled != nil {
 			f.Bool(entries[i].Enabled, entries[i].Prefix+entries[i].Name, "", *entries[i].Enabled, entries[i].Usage)
 		}
 		if entries[i].Disabled != nil {
-			// Automatically generate the 'disable' usage message. Unreliable and bad.
 			disableUsage := "Disable '" + entries[i].Name + "'"
 			f.Bool(entries[i].Disabled, entries[i].Prefix+"no-"+entries[i].Name, "", *entries[i].Disabled, disableUsage)
 		}
 	}
+}
+
+func (f *FlagSet) AddFlagGroup(name, description, groupType, availableFlagsHeader string, entries []FlagGroupEntry) {
+	f.DefineGroupFlags(entries)
 	f.flagGroups = append(f.flagGroups, FlagGroup{
 		Name:                 name,
 		Description:          description,
@@ -173,9 +177,13 @@ func (f *FlagSet) AddFlagGroup(name, description, groupType, availableFlagsHeade
 }
 
 func (f *FlagSet) Var(value Value, name, shorthand, usage, defValue, expectedType string) {
-	if name == "" { panic("flag name cannot be empty") }
+	if name == "" {
+		panic("flag name cannot be empty")
+	}
 	flag := &Flag{Name: name, Shorthand: shorthand, Usage: usage, Value: value, DefValue: defValue, ExpectedType: expectedType}
-	if _, ok := f.flags[name]; ok { panic(fmt.Sprintf("flag redefined: %s", name)) }
+	if _, ok := f.flags[name]; ok {
+		panic(fmt.Sprintf("flag redefined: %s", name))
+	}
 	f.flags[name] = flag
 	if shorthand != "" {
 		if _, ok := f.shorthands[shorthand]; ok {
@@ -528,15 +536,23 @@ func (a *App) formatFlagGroup(sb *strings.Builder, group FlagGroup, indent *Inde
 
 func getTerminalWidth() int {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil { return 80 }
-	if width < 20 { return 20 }
+	if err != nil {
+		return 80
+	}
+	if width < 20 {
+		return 20
+	}
 	return width
 }
 
 func wrapText(text string, maxWidth int) []string {
-	if maxWidth <= 0 { return []string{text} }
+	if maxWidth <= 0 {
+		return []string{text}
+	}
 	words := strings.Fields(text)
-	if len(words) == 0 { return []string{} }
+	if len(words) == 0 {
+		return []string{}
+	}
 
 	var lines []string
 	var currentLine strings.Builder

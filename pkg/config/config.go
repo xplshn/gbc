@@ -1,11 +1,13 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/xplshn/gbc/pkg/cli"
+	"github.com/xplshn/gbc/pkg/token"
 	"modernc.org/libqbe"
 )
 
@@ -91,54 +93,60 @@ var archProperties = map[string]struct {
 }
 
 type Config struct {
-	Features   map[Feature]Info
-	Warnings   map[Warning]Info
-	FeatureMap map[string]Feature
-	WarningMap map[string]Warning
-	StdName    string
+	Features         map[Feature]Info
+	Warnings         map[Warning]Info
+	FeatureMap       map[string]Feature
+	WarningMap       map[string]Warning
+	StdName          string
 	Target
+	LinkerArgs       []string
+	LibRequests      []string
+	UserIncludePaths []string
 }
 
 func NewConfig() *Config {
 	cfg := &Config{
-		Features:   make(map[Feature]Info),
-		Warnings:   make(map[Warning]Info),
-		FeatureMap: make(map[string]Feature),
-		WarningMap: make(map[string]Warning),
+		Features:         make(map[Feature]Info),
+		Warnings:         make(map[Warning]Info),
+		FeatureMap:       make(map[string]Feature),
+		WarningMap:       make(map[string]Warning),
+		LinkerArgs:       make([]string, 0),
+		LibRequests:      make([]string, 0),
+		UserIncludePaths: make([]string, 0),
 	}
 
 	features := map[Feature]Info{
-		FeatExtrn:              {"extrn",               true, "Allow the 'extrn' keyword."},
-		FeatAsm:                {"asm",                 true, "Allow `__asm__` blocks for inline assembly."},
-		FeatBEsc:               {"b-esc",               false,"Recognize B-style '*' character escapes."},
-		FeatCEsc:               {"c-esc",               true, "Recognize C-style '\\' character escapes."},
-		FeatBOps:               {"b-ops",               false,"Recognize B-style assignment operators like '=+'."},
-		FeatCOps:               {"c-ops",               true, "Recognize C-style assignment operators like '+='."},
-		FeatCComments:          {"c-comments",          true, "Recognize C-style '//' line comments."},
-		FeatTyped:              {"typed",               true, "Enable the Bx opt-in & backwards-compatible type system."},
-		FeatShortDecl:          {"short-decl",          true, "Enable Bx-style short declaration `:=`."},
-		FeatBxDeclarations:     {"bx-decl",             true, "Enable Bx-style `auto name = val` declarations."},
+		FeatExtrn:              {"extrn", true, "Allow the 'extrn' keyword."},
+		FeatAsm:                {"asm", true, "Allow `__asm__` blocks for inline assembly."},
+		FeatBEsc:               {"b-esc", false, "Recognize B-style '*' character escapes."},
+		FeatCEsc:               {"c-esc", true, "Recognize C-style '\\' character escapes."},
+		FeatBOps:               {"b-ops", false, "Recognize B-style assignment operators like '=+'."},
+		FeatCOps:               {"c-ops", true, "Recognize C-style assignment operators like '+='."},
+		FeatCComments:          {"c-comments", true, "Recognize C-style '//' line comments."},
+		FeatTyped:              {"typed", true, "Enable the Bx opt-in & backwards-compatible type system."},
+		FeatShortDecl:          {"short-decl", true, "Enable Bx-style short declaration `:=`."},
+		FeatBxDeclarations:     {"bx-decl", true, "Enable Bx-style `auto name = val` declarations."},
 		FeatAllowUninitialized: {"allow-uninitialized", true, "Allow declarations without an initializer (`var;` or `auto var;`)."},
-		FeatStrictDecl:         {"strict-decl",         false,"Require all declarations to be initialized."},
-		FeatContinue:           {"continue",            true, "Allow the Bx keyword `continue` to be used."},
-		FeatNoDirectives:       {"no-directives",       false,"Disable `// [b]:` directives."},
+		FeatStrictDecl:         {"strict-decl", false, "Require all declarations to be initialized."},
+		FeatContinue:           {"continue", true, "Allow the Bx keyword `continue` to be used."},
+		FeatNoDirectives:       {"no-directives", false, "Disable `// [b]:` directives."},
 	}
 
 	warnings := map[Warning]Info{
-		WarnCEsc:               {"c-esc",           false,"Warn on usage of C-style '\\' escapes."},
-		WarnBEsc:               {"b-esc",           true, "Warn on usage of B-style '*' escapes."},
-		WarnBOps:               {"b-ops",           true, "Warn on usage of B-style assignment operators like '=+'."},
-		WarnCOps:               {"c-ops",           false,"Warn on usage of C-style assignment operators like '+='."},
-		WarnUnrecognizedEscape: {"u-esc",           true, "Warn on unrecognized character escape sequences."},
-		WarnTruncatedChar:      {"truncated-char",  true, "Warn when a character escape value is truncated."},
+		WarnCEsc:               {"c-esc", false, "Warn on usage of C-style '\\' escapes."},
+		WarnBEsc:               {"b-esc", true, "Warn on usage of B-style '*' escapes."},
+		WarnBOps:               {"b-ops", true, "Warn on usage of B-style assignment operators like '=+'."},
+		WarnCOps:               {"c-ops", false, "Warn on usage of C-style assignment operators like '+='."},
+		WarnUnrecognizedEscape: {"u-esc", true, "Warn on unrecognized character escape sequences."},
+		WarnTruncatedChar:      {"truncated-char", true, "Warn when a character escape value is truncated."},
 		WarnLongCharConst:      {"long-char-const", true, "Warn when a multi-character constant is too long for a word."},
-		WarnCComments:          {"c-comments",      false,"Warn on usage of non-standard C-style '//' comments."},
-		WarnOverflow:           {"overflow",        true, "Warn when an integer constant is out of range for its type."},
-		WarnPedantic:           {"pedantic",        false,"Issue all warnings demanded by the strict standard."},
-		WarnUnreachableCode:    {"unreachable-code",true, "Warn about code that will never be executed."},
-		WarnImplicitDecl:       {"implicit-decl",   true, "Warn about implicit function or variable declarations."},
-		WarnType:               {"type",            true, "Warn about type mismatches in expressions and assignments."},
-		WarnExtra:              {"extra",           true,  "Enable extra miscellaneous warnings."},
+		WarnCComments:          {"c-comments", false, "Warn on usage of non-standard C-style '//' comments."},
+		WarnOverflow:           {"overflow", true, "Warn when an integer constant is out of range for its type."},
+		WarnPedantic:           {"pedantic", false, "Issue all warnings demanded by the strict standard."},
+		WarnUnreachableCode:    {"unreachable-code", true, "Warn about code that will never be executed."},
+		WarnImplicitDecl:       {"implicit-decl", true, "Warn about implicit function or variable declarations."},
+		WarnType:               {"type", true, "Warn about type mismatches in expressions and assignments."},
+		WarnExtra:              {"extra", true, "Enable extra miscellaneous warnings."},
 	}
 
 	cfg.Features, cfg.Warnings = features, warnings
@@ -188,7 +196,9 @@ func (c *Config) SetTarget(hostOS, hostArch, targetFlag string) {
 	} else { // llvm
 		if c.BackendTarget == "" {
 			tradArch := archTranslations[hostArch]
-			if tradArch == "" { tradArch = hostArch } // No target architecture specified
+			if tradArch == "" {
+				tradArch = hostArch
+			} // No target architecture specified
 			// TODO: ? Infer env ("musl", "gnu", etc..?)
 			c.BackendTarget = fmt.Sprintf("%s-unknown-%s-unknown", tradArch, hostOS)
 			fmt.Fprintf(os.Stderr, "gbc: info: no target specified, defaulting to host target '%s' for backend '%s'\n", c.BackendTarget, c.BackendName)
@@ -286,63 +296,157 @@ func (c *Config) ApplyStd(stdName string) error {
 	return nil
 }
 
-// ProcessDirectiveFlags parses flags from a directive string using a temporary FlagSet.
-func (c *Config) ProcessDirectiveFlags(flagStr string) {
-	fs := cli.NewFlagSet("directive")
+// SetupFlagGroups populates a FlagSet with warning and feature flag groups
+// and returns the corresponding entry slices for processing results.
+func (c *Config) SetupFlagGroups(fs *cli.FlagSet) ([]cli.FlagGroupEntry, []cli.FlagGroupEntry) {
 	var warningFlags, featureFlags []cli.FlagGroupEntry
 
-	// Build warning flags for the directive parser.
 	for i := Warning(0); i < WarnCount; i++ {
 		pEnable := new(bool)
+		*pEnable = c.Warnings[i].Enabled
 		pDisable := new(bool)
-		entry := cli.FlagGroupEntry{Name: c.Warnings[i].Name, Prefix: "W", Enabled: pEnable, Disabled: pDisable}
-		warningFlags = append(warningFlags, entry)
-		fs.Bool(entry.Enabled, entry.Prefix+entry.Name, "", false, "")
-		fs.Bool(entry.Disabled, entry.Prefix+"no-"+entry.Name, "", false, "")
+		warningFlags = append(warningFlags, cli.FlagGroupEntry{
+			Name:     c.Warnings[i].Name,
+			Prefix:   "W",
+			Usage:    c.Warnings[i].Description,
+			Enabled:  pEnable,
+			Disabled: pDisable,
+		})
 	}
 
-	// Build feature flags for the directive parser.
 	for i := Feature(0); i < FeatCount; i++ {
 		pEnable := new(bool)
+		*pEnable = c.Features[i].Enabled
 		pDisable := new(bool)
-		entry := cli.FlagGroupEntry{Name: c.Features[i].Name, Prefix: "F", Enabled: pEnable, Disabled: pDisable}
-		featureFlags = append(featureFlags, entry)
-		fs.Bool(entry.Enabled, entry.Prefix+entry.Name, "", false, "")
-		fs.Bool(entry.Disabled, entry.Prefix+"no-"+entry.Name, "", false, "")
+		featureFlags = append(featureFlags, cli.FlagGroupEntry{
+			Name:     c.Features[i].Name,
+			Prefix:   "F",
+			Usage:    c.Features[i].Description,
+			Enabled:  pEnable,
+			Disabled: pDisable,
+		})
 	}
 
-	// The cli parser expects arguments to start with '-'.
-	args := strings.Fields(flagStr)
-	processedArgs := make([]string, len(args))
-	for i, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			processedArgs[i] = "-" + arg
-		} else {
-			processedArgs[i] = arg
-		}
-	}
+	fs.AddFlagGroup("Warning Flags", "Enable or disable specific warnings", "warning flag", "Available Warning Flags:", warningFlags)
+	fs.AddFlagGroup("Feature Flags", "Enable or disable specific features", "feature flag", "Available feature flags:", featureFlags)
 
-	if err := fs.Parse(processedArgs); err != nil {
-		// Silently ignore errors in directives, as they shouldn't halt compilation.
-		return
-	}
+	return warningFlags, featureFlags
+}
 
-	// Apply parsed directive flags to the configuration.
-	for i, entry := range warningFlags {
-		if *entry.Enabled {
-			c.SetWarning(Warning(i), true)
-		}
-		if *entry.Disabled {
-			c.SetWarning(Warning(i), false)
+// ParseCLIString splits a string into arguments, respecting single quotes.
+func ParseCLIString(s string) ([]string, error) {
+	var args []string
+	var current strings.Builder
+	inQuote := false
+	for _, r := range s {
+		switch {
+		case r == '\'':
+			inQuote = !inQuote
+		case r == ' ' && !inQuote:
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
 		}
 	}
+	if inQuote {
+		return nil, errors.New("unterminated single quote in argument string")
+	}
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+	return args, nil
+}
 
-	for i, entry := range featureFlags {
-		if *entry.Enabled {
-			c.SetFeature(Feature(i), true)
-		}
-		if *entry.Disabled {
-			c.SetFeature(Feature(i), false)
+// ProcessArgs parses a slice of command-line style arguments and updates the configuration.
+func (c *Config) ProcessArgs(args []string) error {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case strings.HasPrefix(arg, "-l"):
+			c.LibRequests = append(c.LibRequests, strings.TrimPrefix(arg, "-l"))
+		case strings.HasPrefix(arg, "-L"):
+			val := strings.TrimPrefix(arg, "-L")
+			if val == "" { // Space separated: -L <val>
+				if i+1 >= len(args) {
+					return fmt.Errorf("missing argument for flag: %s", arg)
+				}
+				i++
+				val = args[i]
+			}
+			c.LinkerArgs = append(c.LinkerArgs, "-L"+val)
+		case strings.HasPrefix(arg, "-I"):
+			val := strings.TrimPrefix(arg, "-I")
+			if val == "" { // Space separated: -I <val>
+				if i+1 >= len(args) {
+					return fmt.Errorf("missing argument for flag: %s", arg)
+				}
+				i++
+				val = args[i]
+			}
+			c.UserIncludePaths = append(c.UserIncludePaths, val)
+		case strings.HasPrefix(arg, "-C"):
+			val := strings.TrimPrefix(arg, "-C")
+			if val == "" { // Space separated: -C <val>
+				if i+1 >= len(args) {
+					return fmt.Errorf("missing argument for flag: %s", arg)
+				}
+				i++
+				val = args[i]
+			}
+			if parts := strings.SplitN(val, "=", 2); len(parts) == 2 && parts[0] == "linker_args" {
+				linkerArgs, err := ParseCLIString(parts[1])
+				if err != nil {
+					return fmt.Errorf("failed to parse linker_args: %w", err)
+				}
+				c.LinkerArgs = append(c.LinkerArgs, linkerArgs...)
+			}
+		case strings.HasPrefix(arg, "-W"):
+			flagName := strings.TrimPrefix(arg, "-W")
+			if strings.HasPrefix(flagName, "no-") {
+				warnName := strings.TrimPrefix(flagName, "no-")
+				if wt, ok := c.WarningMap[warnName]; ok {
+					c.SetWarning(wt, false)
+				} else {
+					return fmt.Errorf("unknown warning flag: %s", arg)
+				}
+			} else {
+				if wt, ok := c.WarningMap[flagName]; ok {
+					c.SetWarning(wt, true)
+				} else {
+					return fmt.Errorf("unknown warning flag: %s", arg)
+				}
+			}
+		case strings.HasPrefix(arg, "-F"):
+			flagName := strings.TrimPrefix(arg, "-F")
+			if strings.HasPrefix(flagName, "no-") {
+				featName := strings.TrimPrefix(flagName, "no-")
+				if ft, ok := c.FeatureMap[featName]; ok {
+					c.SetFeature(ft, false)
+				} else {
+					return fmt.Errorf("unknown feature flag: %s", arg)
+				}
+			} else {
+				if ft, ok := c.FeatureMap[flagName]; ok {
+					c.SetFeature(ft, true)
+				} else {
+					return fmt.Errorf("unknown feature flag: %s", arg)
+				}
+			}
+		default:
+			return fmt.Errorf("unrecognized argument: %s", arg)
 		}
 	}
+	return nil
+}
+
+// ProcessDirectiveFlags parses flags from a directive string.
+func (c *Config) ProcessDirectiveFlags(flagStr string, tok token.Token) error {
+	args, err := ParseCLIString(flagStr)
+	if err != nil {
+		return err
+	}
+	return c.ProcessArgs(args)
 }

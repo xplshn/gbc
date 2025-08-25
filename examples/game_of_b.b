@@ -1,5 +1,6 @@
 // To compile this example you need to pass appropriate linker flags to the b compiler:
 // $ b 65_game_of_b.b -L -lncurses -L -lpanel -run
+// [b]: requires: -lb -C linker_args='-lncurses -lpanel'
 
 TRUE;
 FALSE;
@@ -18,7 +19,7 @@ world_win;
 info_panel;
 speeds;
 
-int32(array, i) {
+_int32(array, i) {
     extrn memcpy;
     auto val;
     val = 0;
@@ -243,8 +244,8 @@ main() {
         } else if(input == 0x199) { // KEY_MOUSE
             if (getmouse(mouse_event) == 0) { // OK
                 auto x, y;
-                x = int32(mouse_event, 1) / 2;
-                y = int32(mouse_event, 2);
+                x = _int32(mouse_event, 1) / 2;
+                y = _int32(mouse_event, 2);
                 set_alive(cur_buf, y, x, !is_alive(cur_buf, y, x));
                 redraw = 1;
             }

@@ -34,9 +34,20 @@ func (l *Lexer) Next() token.Token {
 			return l.makeToken(token.EOF, "", startPos, startCol, startLine)
 		}
 
-		if !l.cfg.IsFeatureEnabled(config.FeatNoDirectives) && l.peek() == '/' && l.peekNext() == '/' {
-			if tok, isDirective := l.lineCommentOrDirective(startPos, startCol, startLine); isDirective {
-				return tok
+		// Handle directives and line comments
+		if l.peek() == '/' && l.peekNext() == '/' {
+			// Try parsing as a directive first. We consume the line
+			// if it's a directive, but reset the position if it's not
+			if !l.cfg.IsFeatureEnabled(config.FeatNoDirectives) {
+				if tok, isDirective := l.lineCommentOrDirective(startPos, startCol, startLine); isDirective {
+					return tok
+				}
+			}
+
+			// If not a directive, treat as a regular C-style comment
+			if l.cfg.IsFeatureEnabled(config.FeatCComments) {
+				l.lineComment()
+				continue // Loop to find the next actual token
 			}
 		}
 
@@ -169,10 +180,8 @@ func (l *Lexer) skipWhitespaceAndComments() {
 		case '/':
 			if l.peekNext() == '*' {
 				l.blockComment()
-			} else if l.peekNext() == '/' && l.cfg.IsFeatureEnabled(config.FeatCComments) {
-				l.lineComment()
 			} else {
-				return
+				return // Next() handles `//` comments
 			}
 		default:
 			return
@@ -213,10 +222,11 @@ func (l *Lexer) lineCommentOrDirective(startPos, startCol, startLine int) (token
 	trimmedContent := strings.TrimSpace(commentContent)
 
 	if strings.HasPrefix(trimmedContent, "[b]:") {
-		directiveContent := strings.TrimSpace(trimmedContent[4:])
+		directiveContent := strings.TrimSpace(strings.TrimPrefix(trimmedContent, "[b]:"))
 		return l.makeToken(token.Directive, directiveContent, startPos, startCol, startLine), true
 	}
 
+	// It's not a directive, so reset the lexer's position to before the '//'
 	l.pos, l.column, l.line = preCommentPos, preCommentCol, preCommentLine
 	return token.Token{}, false
 }
@@ -385,31 +395,19 @@ func (l *Lexer) greater(sPos, sCol, sLine int) token.Token {
 }
 
 func (l *Lexer) equal(sPos, sCol, sLine int) token.Token {
-	if l.match('=') {
-		return l.makeToken(token.EqEq, "", sPos, sCol, sLine)
-	}
+	if l.match('=') { return l.makeToken(token.EqEq, "", sPos, sCol, sLine) }
 	if l.cfg.IsFeatureEnabled(config.FeatBOps) {
 		switch {
-		case l.match('+'):
-			return l.makeToken(token.EqPlus, "", sPos, sCol, sLine)
-		case l.match('-'):
-			return l.makeToken(token.EqMinus, "", sPos, sCol, sLine)
-		case l.match('*'):
-			return l.makeToken(token.EqStar, "", sPos, sCol, sLine)
-		case l.match('/'):
-			return l.makeToken(token.EqSlash, "", sPos, sCol, sLine)
-		case l.match('%'):
-			return l.makeToken(token.EqRem, "", sPos, sCol, sLine)
-		case l.match('&'):
-			return l.makeToken(token.EqAnd, "", sPos, sCol, sLine)
-		case l.match('|'):
-			return l.makeToken(token.EqOr, "", sPos, sCol, sLine)
-		case l.match('^'):
-			return l.makeToken(token.EqXor, "", sPos, sCol, sLine)
-		case l.match('<') && l.match('<'):
-			return l.makeToken(token.EqShl, "", sPos, sCol, sLine)
-		case l.match('>') && l.match('>'):
-			return l.makeToken(token.EqShr, "", sPos, sCol, sLine)
+		case l.match('+'): return l.makeToken(token.EqPlus, "", sPos, sCol, sLine)
+		case l.match('-'): return l.makeToken(token.EqMinus, "", sPos, sCol, sLine)
+		case l.match('*'): return l.makeToken(token.EqStar, "", sPos, sCol, sLine)
+		case l.match('/'): return l.makeToken(token.EqSlash, "", sPos, sCol, sLine)
+		case l.match('%'): return l.makeToken(token.EqRem, "", sPos, sCol, sLine)
+		case l.match('&'): return l.makeToken(token.EqAnd, "", sPos, sCol, sLine)
+		case l.match('|'): return l.makeToken(token.EqOr, "", sPos, sCol, sLine)
+		case l.match('^'): return l.makeToken(token.EqXor, "", sPos, sCol, sLine)
+		case l.match('<') && l.match('<'): return l.makeToken(token.EqShl, "", sPos, sCol, sLine)
+		case l.match('>') && l.match('>'): return l.makeToken(token.EqShr, "", sPos, sCol, sLine)
 		}
 	}
 	return l.makeToken(token.Eq, "", sPos, sCol, sLine)

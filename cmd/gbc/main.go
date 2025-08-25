@@ -19,41 +19,6 @@ import (
 	"github.com/xplshn/gbc/pkg/util"
 )
 
-func setupFlags(cfg *config.Config, fs *cli.FlagSet) ([]cli.FlagGroupEntry, []cli.FlagGroupEntry) {
-	var warningFlags, featureFlags []cli.FlagGroupEntry
-
-	for i := config.Warning(0); i < config.WarnCount; i++ {
-		pEnable := new(bool)
-		*pEnable = cfg.Warnings[i].Enabled
-		pDisable := new(bool)
-		warningFlags = append(warningFlags, cli.FlagGroupEntry{
-			Name:     cfg.Warnings[i].Name,
-			Prefix:   "W",
-			Usage:    cfg.Warnings[i].Description,
-			Enabled:  pEnable,
-			Disabled: pDisable,
-		})
-	}
-
-	for i := config.Feature(0); i < config.FeatCount; i++ {
-		pEnable := new(bool)
-		*pEnable = cfg.Features[i].Enabled
-		pDisable := new(bool)
-		featureFlags = append(featureFlags, cli.FlagGroupEntry{
-			Name:     cfg.Features[i].Name,
-			Prefix:   "F",
-			Usage:    cfg.Features[i].Description,
-			Enabled:  pEnable,
-			Disabled: pDisable,
-		})
-	}
-
-	fs.AddFlagGroup("Warning Flags", "Enable or disable specific warnings", "warning flag", "Available Warning Flags:", warningFlags)
-	fs.AddFlagGroup("Feature Flags", "Enable or disable specific features", "feature flag", "Available feature flags:", featureFlags)
-
-	return warningFlags, featureFlags
-}
-
 func main() {
 	app := cli.NewApp("gbc")
 	app.Synopsis = "[options] <input.b> ..."
@@ -70,22 +35,29 @@ func main() {
 		compilerArgs     []string
 		userIncludePaths []string
 		libRequests      []string
+		pedantic         bool
 	)
 
 	fs := app.FlagSet
-	fs.String(&outFile, "output", "o", "a.out", "Place the output into <file>", "file")
-	fs.String(&std, "std", "", "Bx", "Specify language standard (B, Bx)", "std")
-	fs.String(&target, "target", "t", "qbe", "Set the backend and target ABI (e.g., llvm/x86_64-linux-musl)", "backend/target")
-	fs.List(&linkerArgs, "linker-arg", "", []string{}, "Pass an argument to the linker", "arg")
-	fs.List(&compilerArgs, "compiler-arg", "", []string{}, "Pass a compiler-specific argument (e.g., -C linker_args='-s')", "arg")
-	fs.List(&userIncludePaths, "include", "", []string{}, "Add a directory to the include path", "path")
+	fs.String(&outFile, "output", "o", "a.out", "Place the output into <file>.", "file")
+	fs.String(&target, "target", "t", "qbe", "Set the backend and target ABI.", "backend/target")
+	fs.List(&userIncludePaths, "include", "I", []string{}, "Add a directory to the include path.", "path")
+	fs.List(&linkerArgs, "linker-arg", "L", []string{}, "Pass an argument to the linker.", "arg")
+	fs.List(&compilerArgs, "compiler-arg", "C", []string{}, "Pass a compiler-specific argument (e.g., -C linker_args='-s').", "arg")
 	fs.Special(&libRequests, "l", "Link with a library (e.g., -lb for 'b')", "lib")
+	fs.String(&std, "std", "", "Bx", "Specify language standard (B, Bx)", "std")
+	fs.Bool(&pedantic, "pedantic", "", false, "Issue all warnings demanded by the current B std.")
 
 	cfg := config.NewConfig()
-	warningFlags, featureFlags := setupFlags(cfg, fs)
+	warningFlags, featureFlags := cfg.SetupFlagGroups(fs)
 
 	// Actual compilation pipeline
 	app.Action = func(inputFiles []string) error {
+		// Handle pedantic flag first, as it can affect other settings.
+		if pedantic {
+			cfg.SetWarning(config.WarnPedantic, true)
+		}
+
 		// Apply warning flag updates to config
 		for i, entry := range warningFlags {
 			if entry.Enabled != nil && *entry.Enabled {
@@ -114,33 +86,51 @@ func main() {
 		// Set target, defaulting to the host if not specified
 		cfg.SetTarget(runtime.GOOS, runtime.GOARCH, target)
 
-		// Process compiler arguments for linker args
+		// Populate config from parsed command-line flags
+		cfg.LinkerArgs = append(cfg.LinkerArgs, linkerArgs...)
+		cfg.LibRequests = append(cfg.LibRequests, libRequests...)
+		cfg.UserIncludePaths = append(cfg.UserIncludePaths, userIncludePaths...)
+
+		// Process compiler-specific arguments (-C)
 		for _, carg := range compilerArgs {
 			if parts := strings.SplitN(carg, "=", 2); len(parts) == 2 && parts[0] == "linker_args" {
-				linkerArgs = append(linkerArgs, strings.Fields(parts[1])...)
+				parsedArgs, err := config.ParseCLIString(parts[1])
+				if err != nil {
+					util.Error(token.Token{}, "invalid -C linker_args value: %v", err)
+				}
+				cfg.LinkerArgs = append(cfg.LinkerArgs, parsedArgs...)
 			}
 		}
 
-		// Process input files, searching for libraries based on the target configuration
-		finalInputFiles := processInputFiles(inputFiles, libRequests, userIncludePaths, cfg)
+		// PASS 1: Tokenize and parse initial files to process directives.
+		fmt.Println("----------------------")
+		fmt.Println("Pass 1: Scanning for directives...")
+		records, allTokens := readAndTokenizeFiles(inputFiles, cfg)
+		util.SetSourceFiles(records)
+		p := parser.NewParser(allTokens, cfg)
+		p.Parse() // This populates cfg with directive info.
+
+		// Now that all directives are processed, determine the final list of source files.
+		finalInputFiles := processInputFiles(inputFiles, cfg)
 		if len(finalInputFiles) == 0 {
 			util.Error(token.Token{}, "no input files specified.")
 		}
 
-		fmt.Println("----------------------")
+		// PASS 2: Re-tokenize and parse the complete set of files for compilation.
+		fmt.Println("Pass 2: Compiling all source files...")
 		isTyped := cfg.IsFeatureEnabled(config.FeatTyped)
 		fmt.Printf("Tokenizing %d source file(s) (Typed Pass: %v)...\n", len(finalInputFiles), isTyped)
-		records, allTokens := readAndTokenizeFiles(finalInputFiles, cfg)
-		util.SetSourceFiles(records)
+		fullRecords, fullTokens := readAndTokenizeFiles(finalInputFiles, cfg)
+		util.SetSourceFiles(fullRecords)
 
 		fmt.Println("Parsing tokens into AST...")
-		p := parser.NewParser(allTokens, cfg)
-		astRoot := p.Parse()
+		fullParser := parser.NewParser(fullTokens, cfg)
+		astRoot := fullParser.Parse()
 
 		fmt.Println("Constant folding...")
 		astRoot = ast.FoldConstants(astRoot)
 
-		if isTyped {
+		if cfg.IsFeatureEnabled(config.FeatTyped) { // Re-check after directives
 			fmt.Println("Type checking...")
 			tc := typeChecker.NewTypeChecker(cfg)
 			tc.Check(astRoot)
@@ -158,7 +148,7 @@ func main() {
 		}
 
 		fmt.Printf("Assembling and linking to create '%s'...\n", outFile)
-		if err := assembleAndLink(outFile, backendOutput.String(), inlineAsm, linkerArgs); err != nil {
+		if err := assembleAndLink(outFile, backendOutput.String(), inlineAsm, cfg.LinkerArgs); err != nil {
 			util.Error(token.Token{}, "assembler/linker failed: %v", err)
 		}
 
@@ -172,11 +162,27 @@ func main() {
 	}
 }
 
-func processInputFiles(args []string, libRequests []string, userPaths []string, cfg *config.Config) []string {
+func processInputFiles(args []string, cfg *config.Config) []string {
+	// Use a map to avoid duplicate library entries
+	uniqueLibs := make(map[string]bool)
+	for _, lib := range cfg.LibRequests {
+		uniqueLibs[lib] = true
+	}
+
 	inputFiles := args
-	for _, libName := range libRequests {
-		if libPath := findLibrary(libName, userPaths, cfg); libPath != "" {
-			inputFiles = append(inputFiles, libPath)
+	for libName := range uniqueLibs {
+		if libPath := findLibrary(libName, cfg.UserIncludePaths, cfg); libPath != "" {
+			// Avoid adding the same library file path multiple times
+			found := false
+			for _, inFile := range inputFiles {
+				if inFile == libPath {
+					found = true
+					break
+				}
+			}
+			if !found {
+				inputFiles = append(inputFiles, libPath)
+			}
 		} else {
 			util.Error(token.Token{}, "could not find library '%s' for target %s/%s", libName, cfg.GOOS, cfg.GOARCH)
 		}
@@ -214,6 +220,7 @@ func findLibrary(libName string, userPaths []string, cfg *config.Config) string 
 			}
 		}
 	}
+	util.Error(token.Token{}, "could not find library '%s'", libName)
 	return ""
 }
 
@@ -276,7 +283,9 @@ func readAndTokenizeFiles(paths []string, cfg *config.Config) ([]util.SourceFile
 		}
 	}
 	finalFileIndex := 0
-	if len(paths) > 0 { finalFileIndex = len(paths) - 1 }
+	if len(paths) > 0 {
+		finalFileIndex = len(paths) - 1
+	}
 	allTokens = append(allTokens, token.Token{Type: token.EOF, FileIndex: finalFileIndex})
 	return records, allTokens
 }
