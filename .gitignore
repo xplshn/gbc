@@ -2,13 +2,13 @@
 *.o
 output.*
 lib/qbe/obj
-cbc
-gbc
-libb
+./cbc
+./gbc
 examples/libb
 examples/.build
 tests/libb
 tests/.build
 .build
 output_*
-cmd/gtest/gtest
+./cmd/gtest/gtest
+./cmd/gbc/gbc
