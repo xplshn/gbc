@@ -104,11 +104,10 @@ func main() {
 
 		// PASS 1: Tokenize and parse initial files to process directives.
 		fmt.Println("----------------------")
-		fmt.Println("Pass 1: Scanning for directives...")
 		records, allTokens := readAndTokenizeFiles(inputFiles, cfg)
 		util.SetSourceFiles(records)
 		p := parser.NewParser(allTokens, cfg)
-		p.Parse() // This populates cfg with directive info.
+		p.Parse() // populates cfg with directive info
 
 		// Now that all directives are processed, determine the final list of source files.
 		finalInputFiles := processInputFiles(inputFiles, cfg)
@@ -117,7 +116,6 @@ func main() {
 		}
 
 		// PASS 2: Re-tokenize and parse the complete set of files for compilation.
-		fmt.Println("Pass 2: Compiling all source files...")
 		isTyped := cfg.IsFeatureEnabled(config.FeatTyped)
 		fmt.Printf("Tokenizing %d source file(s) (Typed Pass: %v)...\n", len(finalInputFiles), isTyped)
 		fullRecords, fullTokens := readAndTokenizeFiles(finalInputFiles, cfg)
