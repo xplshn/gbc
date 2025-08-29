@@ -8,10 +8,11 @@ import (
 type NodeType int
 
 const (
-	// Expressions
 	Number NodeType = iota
+	FloatNumber
 	String
 	Ident
+	Nil
 	Assign
 	BinaryOp
 	UnaryOp
@@ -24,12 +25,12 @@ const (
 	AutoAlloc
 	MemberAccess
 	TypeCast
-
-	// Statements
+	StructLiteral
 	FuncDecl
 	VarDecl
 	MultiVarDecl
 	TypeDecl
+	EnumDecl
 	ExtrnDecl
 	If
 	While
@@ -46,13 +47,12 @@ const (
 	Directive
 )
 
-// Node represents a node in the Abstract Syntax Tree
 type Node struct {
 	Type   NodeType
 	Tok    token.Token
 	Parent *Node
 	Data   interface{}
-	Typ    *BxType // Set by the type checker
+	Typ    *BxType
 }
 
 type BxTypeKind int
@@ -63,46 +63,54 @@ const (
 	TYPE_VOID
 	TYPE_ARRAY
 	TYPE_STRUCT
+	TYPE_ENUM
 	TYPE_BOOL
 	TYPE_FLOAT
 	TYPE_UNTYPED
+	TYPE_NIL
+	TYPE_UNTYPED_INT
+	TYPE_UNTYPED_FLOAT
 )
 
-// BxType represents a type in the Bx type system.
 type BxType struct {
 	Kind      BxTypeKind
-	Base      *BxType // Base type for pointers or arrays.
-	Name      string  // Name for primitive types or the typedef name.
+	Base      *BxType
+	Name      string
 	ArraySize *Node
 	IsConst   bool
-	StructTag string  // The name immediately following the 'struct' keyword.
-	Fields    []*Node // List of *VarDecl nodes for struct members.
+	StructTag string
+	Fields    []*Node
+	EnumMembers []*Node
 }
 
-// Pre-defined types.
 var (
-	TypeInt     = &BxType{Kind: TYPE_PRIMITIVE, Name: "int"}
-	TypeUint    = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint"}
-	TypeInt8    = &BxType{Kind: TYPE_PRIMITIVE, Name: "int8"}
-	TypeUint8   = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint8"}
-	TypeInt16   = &BxType{Kind: TYPE_PRIMITIVE, Name: "int16"}
-	TypeUint16  = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint16"}
-	TypeInt32   = &BxType{Kind: TYPE_PRIMITIVE, Name: "int32"}
-	TypeUint32  = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint32"}
-	TypeInt64   = &BxType{Kind: TYPE_PRIMITIVE, Name: "int64"}
-	TypeUint64  = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint64"}
-	TypeFloat   = &BxType{Kind: TYPE_FLOAT, Name: "float"}
-	TypeFloat32 = &BxType{Kind: TYPE_FLOAT, Name: "float32"}
-	TypeFloat64 = &BxType{Kind: TYPE_FLOAT, Name: "float64"}
-	TypeByte    = &BxType{Kind: TYPE_PRIMITIVE, Name: "byte"}
-	TypeVoid    = &BxType{Kind: TYPE_VOID, Name: "void"}
-	TypeBool    = &BxType{Kind: TYPE_BOOL, Name: "bool"}
-	TypeUntyped = &BxType{Kind: TYPE_UNTYPED, Name: "untyped"}
-	TypeString  = &BxType{Kind: TYPE_POINTER, Base: TypeByte, Name: "string"}
+	TypeInt          = &BxType{Kind: TYPE_PRIMITIVE, Name: "int"}
+	TypeUint         = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint"}
+	TypeInt8         = &BxType{Kind: TYPE_PRIMITIVE, Name: "int8"}
+	TypeUint8        = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint8"}
+	TypeInt16        = &BxType{Kind: TYPE_PRIMITIVE, Name: "int16"}
+	TypeUint16       = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint16"}
+	TypeInt32        = &BxType{Kind: TYPE_PRIMITIVE, Name: "int32"}
+	TypeUint32       = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint32"}
+	TypeInt64        = &BxType{Kind: TYPE_PRIMITIVE, Name: "int64"}
+	TypeUint64       = &BxType{Kind: TYPE_PRIMITIVE, Name: "uint64"}
+	TypeFloat        = &BxType{Kind: TYPE_FLOAT, Name: "float"}
+	TypeFloat32      = &BxType{Kind: TYPE_FLOAT, Name: "float32"}
+	TypeFloat64      = &BxType{Kind: TYPE_FLOAT, Name: "float64"}
+	TypeByte         = &BxType{Kind: TYPE_PRIMITIVE, Name: "byte"}
+	TypeVoid         = &BxType{Kind: TYPE_VOID, Name: "void"}
+	TypeBool         = &BxType{Kind: TYPE_BOOL, Name: "bool"}
+	TypeUntyped      = &BxType{Kind: TYPE_UNTYPED, Name: "untyped"}
+	TypeString       = &BxType{Kind: TYPE_POINTER, Base: TypeByte, Name: "string"}
+	TypeNil          = &BxType{Kind: TYPE_NIL, Name: "nil"}
+	TypeUntypedInt   = &BxType{Kind: TYPE_UNTYPED_INT, Name: "untyped int"}
+	TypeUntypedFloat = &BxType{Kind: TYPE_UNTYPED_FLOAT, Name: "untyped float"}
 )
 
 type NumberNode struct{ Value int64 }
+type FloatNumberNode struct{ Value float64 }
 type StringNode struct{ Value string }
+type NilNode struct{}
 type IdentNode struct{ Name string }
 type AssignNode struct{ Op token.Type; Lhs, Rhs *Node }
 type BinaryOpNode struct{ Op token.Type; Left, Right *Node }
@@ -114,6 +122,7 @@ type TernaryNode struct{ Cond, ThenExpr, ElseExpr *Node }
 type SubscriptNode struct{ Array, Index *Node }
 type MemberAccessNode struct{ Expr, Member *Node }
 type TypeCastNode struct{ Expr *Node; TargetType *BxType }
+type StructLiteralNode struct{ TypeNode *Node; Values []*Node; Names []*Node }
 type FuncCallNode struct{ FuncExpr *Node; Args []*Node }
 type AutoAllocNode struct{ Size *Node }
 type FuncDeclNode struct {
@@ -135,16 +144,16 @@ type VarDeclNode struct {
 }
 type MultiVarDeclNode struct{ Decls []*Node }
 type TypeDeclNode struct{ Name string; Type *BxType }
+type EnumDeclNode struct{ Name string; Members []*Node }
 type ExtrnDeclNode struct{ Names []*Node }
 type IfNode struct{ Cond, ThenBody, ElseBody *Node }
 type WhileNode struct{ Cond, Body *Node }
 type ReturnNode struct{ Expr *Node }
 type BlockNode struct{ Stmts []*Node; IsSynthetic bool }
 type GotoNode struct{ Label string }
-type CaseLabelNode struct{ Value int64; LabelName string }
-type SwitchNode struct{ Expr, Body *Node; CaseLabels []CaseLabelNode; DefaultLabelName string }
-type CaseNode struct{ Value, Body *Node; QbeLabel string }
-type DefaultNode struct{ Body *Node; QbeLabel string }
+type SwitchNode struct{ Expr, Body *Node }
+type CaseNode struct{ Values []*Node; Body *Node }
+type DefaultNode struct{ Body *Node }
 type BreakNode struct{}
 type ContinueNode struct{}
 type LabelNode struct{ Name string; Stmt *Node }
@@ -154,22 +163,24 @@ type DirectiveNode struct{ Name string }
 func newNode(tok token.Token, nodeType NodeType, data interface{}, children ...*Node) *Node {
 	node := &Node{Type: nodeType, Tok: tok, Data: data}
 	for _, child := range children {
-		if child != nil {
-			child.Parent = node
-		}
+		if child != nil { child.Parent = node }
 	}
 	return node
 }
 
 func NewNumber(tok token.Token, value int64) *Node {
-	return newNode(tok, Number, NumberNode{Value: value})
+	node := newNode(tok, Number, NumberNode{Value: value})
+	node.Typ = TypeUntypedInt
+	return node
 }
-func NewString(tok token.Token, value string) *Node {
-	return newNode(tok, String, StringNode{Value: value})
+func NewFloatNumber(tok token.Token, value float64) *Node {
+	node := newNode(tok, FloatNumber, FloatNumberNode{Value: value})
+	node.Typ = TypeUntypedFloat
+	return node
 }
-func NewIdent(tok token.Token, name string) *Node {
-	return newNode(tok, Ident, IdentNode{Name: name})
-}
+func NewString(tok token.Token, value string) *Node { return newNode(tok, String, StringNode{Value: value}) }
+func NewNil(tok token.Token) *Node                 { return newNode(tok, Nil, NilNode{}) }
+func NewIdent(tok token.Token, name string) *Node   { return newNode(tok, Ident, IdentNode{Name: name}) }
 func NewAssign(tok token.Token, op token.Type, lhs, rhs *Node) *Node {
 	return newNode(tok, Assign, AssignNode{Op: op, Lhs: lhs, Rhs: rhs}, lhs, rhs)
 }
@@ -199,6 +210,16 @@ func NewMemberAccess(tok token.Token, expr, member *Node) *Node {
 }
 func NewTypeCast(tok token.Token, expr *Node, targetType *BxType) *Node {
 	return newNode(tok, TypeCast, TypeCastNode{Expr: expr, TargetType: targetType}, expr)
+}
+func NewStructLiteral(tok token.Token, typeNode *Node, values []*Node, names []*Node) *Node {
+	node := newNode(tok, StructLiteral, StructLiteralNode{TypeNode: typeNode, Values: values, Names: names}, typeNode)
+	for _, v := range values {
+		v.Parent = node
+	}
+	for _, n := range names {
+		if n != nil { n.Parent = node }
+	}
+	return node
 }
 func NewFuncCall(tok token.Token, funcExpr *Node, args []*Node) *Node {
 	node := newNode(tok, FuncCall, FuncCallNode{FuncExpr: funcExpr, Args: args}, funcExpr)
@@ -238,6 +259,13 @@ func NewMultiVarDecl(tok token.Token, decls []*Node) *Node {
 func NewTypeDecl(tok token.Token, name string, typ *BxType) *Node {
 	return newNode(tok, TypeDecl, TypeDeclNode{Name: name, Type: typ})
 }
+func NewEnumDecl(tok token.Token, name string, members []*Node) *Node {
+	node := newNode(tok, EnumDecl, EnumDeclNode{Name: name, Members: members})
+	for _, m := range members {
+		m.Parent = node
+	}
+	return node
+}
 func NewExtrnDecl(tok token.Token, names []*Node) *Node {
 	node := newNode(tok, ExtrnDecl, ExtrnDeclNode{Names: names})
 	for _, n := range names {
@@ -257,9 +285,7 @@ func NewReturn(tok token.Token, expr *Node) *Node {
 func NewBlock(tok token.Token, stmts []*Node, isSynthetic bool) *Node {
 	node := newNode(tok, Block, BlockNode{Stmts: stmts, IsSynthetic: isSynthetic})
 	for _, s := range stmts {
-		if s != nil {
-			s.Parent = node
-		}
+		if s != nil { s.Parent = node }
 	}
 	return node
 }
@@ -269,18 +295,18 @@ func NewGoto(tok token.Token, label string) *Node {
 func NewSwitch(tok token.Token, expr, body *Node) *Node {
 	return newNode(tok, Switch, SwitchNode{Expr: expr, Body: body}, expr, body)
 }
-func NewCase(tok token.Token, value, body *Node) *Node {
-	return newNode(tok, Case, CaseNode{Value: value, Body: body}, value, body)
+func NewCase(tok token.Token, values []*Node, body *Node) *Node {
+	node := newNode(tok, Case, CaseNode{Values: values, Body: body}, body)
+	for _, v := range values {
+		v.Parent = node
+	}
+	return node
 }
 func NewDefault(tok token.Token, body *Node) *Node {
 	return newNode(tok, Default, DefaultNode{Body: body}, body)
 }
-func NewBreak(tok token.Token) *Node {
-	return newNode(tok, Break, BreakNode{})
-}
-func NewContinue(tok token.Token) *Node {
-	return newNode(tok, Continue, ContinueNode{})
-}
+func NewBreak(tok token.Token) *Node    { return newNode(tok, Break, BreakNode{}) }
+func NewContinue(tok token.Token) *Node { return newNode(tok, Continue, ContinueNode{}) }
 func NewLabel(tok token.Token, name string, stmt *Node) *Node {
 	return newNode(tok, Label, LabelNode{Name: name, Stmt: stmt}, stmt)
 }
@@ -291,11 +317,8 @@ func NewDirective(tok token.Token, name string) *Node {
 	return newNode(tok, Directive, DirectiveNode{Name: name})
 }
 
-// FoldConstants performs compile-time constant evaluation on the AST.
 func FoldConstants(node *Node) *Node {
-	if node == nil {
-		return nil
-	}
+	if node == nil { return nil }
 
 	switch d := node.Data.(type) {
 	case AssignNode:
@@ -342,15 +365,14 @@ func FoldConstants(node *Node) *Node {
 			case token.Lt: if l < r { res = 1 }
 			case token.Gt: if l > r { res = 1 }
 			case token.Lte: if l <= r { res = 1 }
-			case token.Gte: if l >= r {	res = 1	}
+			case token.Gte: if l >= r { res = 1 }
 			case token.Slash:
-				if r == 0 { util.Error(node.Tok, "Compile-time division by zero.") }
+				if r == 0 { util.Error(node.Tok, "Compile-time division by zero") }
 				res = l / r
 			case token.Rem:
-				if r == 0 { util.Error(node.Tok, "Compile-time modulo by zero.") }
+				if r == 0 { util.Error(node.Tok, "Compile-time modulo by zero") }
 				res = l % r
-			default:
-				folded = false
+			default: folded = false
 			}
 			if folded { return NewNumber(node.Tok, res) }
 		}
@@ -364,8 +386,7 @@ func FoldConstants(node *Node) *Node {
 			case token.Minus: res = -val
 			case token.Complement: res = ^val
 			case token.Not: if val == 0 { res = 1 }
-			default:
-				folded = false
+			default: folded = false
 			}
 			if folded { return NewNumber(node.Tok, res) }
 		}

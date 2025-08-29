@@ -3,17 +3,13 @@ package token
 type Type int
 
 const (
-	// Meta
 	EOF Type = iota
 	Comment
 	Directive
-
-	// Literals
 	Ident
 	Number
+	FloatNumber
 	String
-
-	// Keywords
 	Auto
 	Extrn
 	If
@@ -26,14 +22,13 @@ const (
 	Default
 	Break
 	Continue
-	Asm // `__asm__`
-
-	// Bx Type System Keywords that are not types themselves
-	TypeKeyword // 'type'
+	Asm
+	Nil
+	Null
+	TypeKeyword
 	Struct
+	Enum
 	Const
-
-	// Bx Type System Keywords that ARE types
 	Void
 	Bool
 	Byte
@@ -50,10 +45,8 @@ const (
 	Float
 	Float32
 	Float64
-	StringKeyword // 'string'
+	StringKeyword
 	Any
-
-	// Punctuation
 	LParen
 	RParen
 	LBrace
@@ -66,8 +59,6 @@ const (
 	Question
 	Dots
 	Dot
-
-	// Assignment Operators
 	Eq
 	Define
 	PlusEq
@@ -90,8 +81,6 @@ const (
 	EqXor
 	EqShl
 	EqShr
-
-	// Binary Operators
 	Plus
 	Minus
 	Star
@@ -110,8 +99,6 @@ const (
 	Lte
 	AndAnd
 	OrOr
-
-	// Unary & Postfix Operators
 	Not
 	Complement
 	Inc
@@ -132,9 +119,12 @@ var KeywordMap = map[string]Type{
 	"__asm__":  Asm,
 	"break":    Break,
 	"continue": Continue,
+	"nil":      Nil,
+	"null":     Null,
 	"void":     Void,
 	"type":     TypeKeyword,
 	"struct":   Struct,
+	"enum":     Enum,
 	"const":    Const,
 	"bool":     Bool,
 	"byte":     Byte,
@@ -153,6 +143,15 @@ var KeywordMap = map[string]Type{
 	"float64":  Float64,
 	"string":   StringKeyword,
 	"any":      Any,
+}
+
+// Reverse mapping from Type to the keyword string.
+var TypeStrings = make(map[Type]string)
+
+func init() {
+	for str, typ := range KeywordMap {
+		TypeStrings[typ] = str
+	}
 }
 
 type Token struct {

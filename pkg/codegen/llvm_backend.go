@@ -3,6 +3,7 @@ package codegen
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -13,23 +14,18 @@ import (
 	"github.com/xplshn/gbc/pkg/ir"
 )
 
-// llvmBackend implements the Backend interface for LLVM IR.
 type llvmBackend struct {
 	out       *strings.Builder
 	prog      *ir.Program
 	cfg       *config.Config
 	wordType  string
-	tempTypes map[string]string // Maps temporary/global name to its LLVM type string
-	funcSigs  map[string]string // Caches function signatures
+	tempTypes map[string]string
+	funcSigs  map[string]string
 	currentFn *ir.Func
 }
 
-// NewLLVMBackend creates a new instance of the LLVM backend.
-func NewLLVMBackend() Backend {
-	return &llvmBackend{}
-}
+func NewLLVMBackend() Backend { return &llvmBackend{} }
 
-// Generate translates a generic IR program into final assembly using the LLVM toolchain.
 func (b *llvmBackend) Generate(prog *ir.Program, cfg *config.Config) (*bytes.Buffer, error) {
 	var llvmIRBuilder strings.Builder
 	b.out = &llvmIRBuilder
@@ -43,18 +39,13 @@ func (b *llvmBackend) Generate(prog *ir.Program, cfg *config.Config) (*bytes.Buf
 
 	llvmIR := llvmIRBuilder.String()
 	asm, err := b.compileLLVMIR(llvmIR)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	return bytes.NewBufferString(asm), nil
 }
 
-// compileLLVMIR invokes the 'llc' tool to compile LLVM IR into assembly.
 func (b *llvmBackend) compileLLVMIR(llvmIR string) (string, error) {
 	llFile, err := os.CreateTemp("", "gbc-main-*.ll")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file for LLVM IR: %w", err)
-	}
+	if err != nil { return "", fmt.Errorf("failed to create temp file for LLVM IR: %w", err) }
 	defer os.Remove(llFile.Name())
 	if _, err := llFile.WriteString(llvmIR); err != nil {
 		return "", fmt.Errorf("failed to write to temp file for LLVM IR: %w", err)
@@ -62,9 +53,7 @@ func (b *llvmBackend) compileLLVMIR(llvmIR string) (string, error) {
 	llFile.Close()
 
 	asmFile, err := os.CreateTemp("", "gbc-main-*.s")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file for assembly: %w", err)
-	}
+	if err != nil { return "", fmt.Errorf("failed to create temp file for assembly: %w", err) }
 	asmFile.Close()
 	defer os.Remove(asmFile.Name())
 
@@ -74,9 +63,7 @@ func (b *llvmBackend) compileLLVMIR(llvmIR string) (string, error) {
 	}
 
 	asmBytes, err := os.ReadFile(asmFile.Name())
-	if err != nil {
-		return "", fmt.Errorf("failed to read temporary assembly file: %w", err)
-	}
+	if err != nil { return "", fmt.Errorf("failed to read temporary assembly file: %w", err) }
 	return string(asmBytes), nil
 }
 
@@ -93,30 +80,17 @@ func (b *llvmBackend) gen() {
 	}
 }
 
-func (b *llvmBackend) getFuncSig(name string) (retType string) {
-	switch name {
-	case "printf", "fprintf", "sprintf", "atoi", "usleep":
-		return "i32"
-	case "malloc", "realloc", "memset":
-		return "i8*"
-	case "sin", "cos", "sqrt", "fabs":
-		return "double"
-	case "free", "exit":
-		return "void"
-	default:
-		return b.wordType
-	}
-}
+func (b *llvmBackend) getFuncSig(name string) (retType string) { return b.wordType }
 
 func (b *llvmBackend) genDeclarations() {
 	knownExternals := make(map[string]bool)
 
+	b.out.WriteString("declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)\n")
+
 	if len(b.prog.ExtrnVars) > 0 {
 		b.out.WriteString("; --- External Variables ---\n")
 		for name := range b.prog.ExtrnVars {
-			if knownExternals[name] {
-				continue
-			}
+			if knownExternals[name] { continue }
 			ptrType := "i8*"
 			fmt.Fprintf(b.out, "@%s = external global %s\n", name, ptrType)
 			b.tempTypes["@"+name] = ptrType + "*"
@@ -166,9 +140,7 @@ func (b *llvmBackend) genDeclarations() {
 }
 
 func (b *llvmBackend) genStrings() {
-	if len(b.prog.Strings) == 0 {
-		return
-	}
+	if len(b.prog.Strings) == 0 { return }
 	b.out.WriteString("; --- String Literals ---\n")
 	for s, label := range b.prog.Strings {
 		strLen := len(s) + 1
@@ -181,9 +153,7 @@ func (b *llvmBackend) genStrings() {
 }
 
 func (b *llvmBackend) genGlobals() {
-	if len(b.prog.Globals) == 0 {
-		return
-	}
+	if len(b.prog.Globals) == 0 { return }
 	b.out.WriteString("; --- Global Variables ---\n")
 	for _, g := range b.prog.Globals {
 		hasInitializer := false
@@ -197,16 +167,12 @@ func (b *llvmBackend) genGlobals() {
 				totalItemCount++
 				hasInitializer = true
 			}
-			if firstItemType == -1 {
-				firstItemType = item.Typ
-			}
+			if firstItemType == -1 { firstItemType = item.Typ }
 		}
 
 		var globalType string
 		elemType := b.formatType(firstItemType)
-		if firstItemType == -1 {
-			elemType = b.wordType
-		}
+		if firstItemType == -1 { elemType = b.wordType }
 
 		if totalItemCount > 1 {
 			globalType = fmt.Sprintf("[%d x %s]", totalItemCount, elemType)
@@ -232,7 +198,7 @@ func (b *llvmBackend) genGlobals() {
 					}
 				}
 				initializer = fmt.Sprintf("[ %s ]", strings.Join(typedItems, ", "))
-			} else { // Scalar
+			} else {
 				initializer = b.formatGlobalInitializerValue(g.Items[0].Value, globalType)
 			}
 		}
@@ -247,20 +213,19 @@ func (b *llvmBackend) formatGlobalInitializerValue(v ir.Value, targetType string
 	switch val := v.(type) {
 	case *ir.Const:
 		return fmt.Sprintf("%d", val.Value)
+	case *ir.FloatConst:
+		if targetType == "float" { return fmt.Sprintf("0x%X", math.Float32bits(float32(val.Value))) }
+		return fmt.Sprintf("0x%X", math.Float64bits(val.Value))
 	case *ir.Global:
 		strContent, isString := b.prog.IsStringLabel(val.Name)
 		if isString {
 			strType := fmt.Sprintf("[%d x i8]", len(strContent)+1)
 			gep := fmt.Sprintf("getelementptr inbounds (%s, %s* @%s, i64 0, i64 0)", strType, strType, val.Name)
-			if targetType != "i8*" {
-				return fmt.Sprintf("ptrtoint (i8* %s to %s)", gep, targetType)
-			}
+			if targetType != "i8*" { return fmt.Sprintf("ptrtoint (i8* %s to %s)", gep, targetType) }
 			return gep
 		}
 		sourceType := b.getType(val)
-		if !strings.HasSuffix(sourceType, "*") {
-			sourceType += "*"
-		}
+		if !strings.HasSuffix(sourceType, "*") { sourceType += "*" }
 		return fmt.Sprintf("bitcast (%s @%s to %s)", sourceType, val.Name, targetType)
 	default:
 		return "0"
@@ -271,9 +236,7 @@ func (b *llvmBackend) genFunc(fn *ir.Func) {
 	b.currentFn = fn
 	globalTypes := make(map[string]string)
 	for k, v := range b.tempTypes {
-		if strings.HasPrefix(k, "@") {
-			globalTypes[k] = v
-		}
+		if strings.HasPrefix(k, "@") { globalTypes[k] = v }
 	}
 	b.tempTypes = globalTypes
 
@@ -282,26 +245,20 @@ func (b *llvmBackend) genFunc(fn *ir.Func) {
 	for _, p := range fn.Params {
 		pName := b.formatValue(p.Val)
 		pType := b.formatType(p.Typ)
-		if fn.Name == "main" && p.Name == "argv" {
-			pType = "i8**"
-		}
+		if fn.Name == "main" && p.Name == "argv" { pType = "i8**" }
 		params = append(params, fmt.Sprintf("%s %s", pType, pName))
 		b.tempTypes[pName] = pType
 	}
 	paramStr := strings.Join(params, ", ")
 	if fn.HasVarargs {
-		if len(params) > 0 {
-			paramStr += ", "
-		}
+		if len(params) > 0 { paramStr += ", " }
 		paramStr += "..."
 	}
 
 	fmt.Fprintf(b.out, "define %s @%s(%s) {\n", retTypeStr, fn.Name, paramStr)
 	for i, block := range fn.Blocks {
 		labelName := block.Label.Name
-		if i == 0 {
-			labelName = "entry"
-		}
+		if i == 0 { labelName = "entry" }
 		fmt.Fprintf(b.out, "%s:\n", labelName)
 		b.genBlock(block)
 	}
@@ -325,9 +282,7 @@ func (b *llvmBackend) genBlock(block *ir.BasicBlock) {
 	for _, instr := range block.Instructions[:phiEndIndex] {
 		if instr.Op == ir.OpPhi {
 			cast := b.genPhi(instr)
-			if cast != "" {
-				deferredCasts = append(deferredCasts, cast)
-			}
+			if cast != "" { deferredCasts = append(deferredCasts, cast) }
 		}
 	}
 
@@ -341,23 +296,17 @@ func (b *llvmBackend) genBlock(block *ir.BasicBlock) {
 }
 
 func (b *llvmBackend) genInstr(instr *ir.Instruction) {
-	if instr.Op == ir.OpPhi {
-		return
-	}
+	if instr.Op == ir.OpPhi { return }
 
 	resultName := ""
-	if instr.Result != nil {
-		resultName = b.formatValue(instr.Result)
-	}
+	if instr.Result != nil { resultName = b.formatValue(instr.Result) }
 
 	b.out.WriteString("\t")
 
 	switch instr.Op {
 	case ir.OpAlloc:
 		align := instr.Align
-		if align == 0 {
-			align = b.cfg.StackAlignment
-		}
+		if align == 0 { align = b.cfg.StackAlignment }
 		sizeVal := b.prepareArg(instr.Args[0], b.wordType)
 		fmt.Fprintf(b.out, "%s = alloca i8, %s %s, align %d\n", resultName, b.wordType, sizeVal, align)
 		b.tempTypes[resultName] = "i8*"
@@ -417,27 +366,48 @@ func (b *llvmBackend) genInstr(instr *ir.Instruction) {
 		}
 
 	case ir.OpCEq, ir.OpCNeq, ir.OpCLt, ir.OpCGt, ir.OpCLe, ir.OpCGe:
-		opStr, predicate := b.formatOp(instr.Op)
-		lhsType := b.getType(instr.Args[0])
-		rhsType := b.getType(instr.Args[1])
-		valType := lhsType
-		if _, ok := instr.Args[0].(*ir.Const); ok {
-			valType = rhsType
-		}
+		lhsType, rhsType := b.getType(instr.Args[0]), b.getType(instr.Args[1])
 
-		lhs := b.prepareArg(instr.Args[0], valType)
-		var rhs string
+		var valType string
+		lhsIsPtr := strings.HasSuffix(lhsType, "*") || (lhsType == "unknown" && b.isPointerValue(instr.Args[0]))
+		rhsIsPtr := strings.HasSuffix(rhsType, "*") || (rhsType == "unknown" && b.isPointerValue(instr.Args[1]))
 
-		isPtrComparison := strings.HasSuffix(valType, "*")
-		if c, ok := instr.Args[1].(*ir.Const); ok && c.Value == 0 && isPtrComparison {
-			rhs = "null"
-		} else if c, ok := instr.Args[0].(*ir.Const); ok && c.Value == 0 && strings.HasSuffix(rhsType, "*") {
+		if lhsIsPtr || rhsIsPtr {
+			valType = "i8*"
+		} else if lhsType != "unknown" && lhsType != b.wordType {
+			valType = lhsType
+		} else if rhsType != "unknown" && rhsType != b.wordType {
 			valType = rhsType
-			lhs = b.prepareArg(instr.Args[0], valType)
-			rhs = "null"
 		} else {
-			rhs = b.prepareArg(instr.Args[1], valType)
+			valType = b.wordType
 		}
+
+		isFloat := valType == "float" || valType == "double"
+		var opStr, predicate string
+		if isFloat {
+			opStr = "fcmp"
+			switch instr.Op {
+			case ir.OpCEq: predicate = "oeq"
+			case ir.OpCNeq: predicate = "one"
+			case ir.OpCLt: predicate = "olt"
+			case ir.OpCGt: predicate = "ogt"
+			case ir.OpCLe: predicate = "ole"
+			case ir.OpCGe: predicate = "oge"
+			}
+		} else {
+			opStr = "icmp"
+			switch instr.Op {
+			case ir.OpCEq: predicate = "eq"
+			case ir.OpCNeq: predicate = "ne"
+			case ir.OpCLt: predicate = "slt"
+			case ir.OpCGt: predicate = "sgt"
+			case ir.OpCLe: predicate = "sle"
+			case ir.OpCGe: predicate = "sge"
+			}
+		}
+
+		lhs := b.prepareArgForComparison(instr.Args[0], valType)
+		rhs := b.prepareArgForComparison(instr.Args[1], valType)
 
 		i1Temp := b.newBackendTemp()
 		fmt.Fprintf(b.out, "%s = %s %s %s %s, %s\n", i1Temp, opStr, predicate, valType, lhs, rhs)
@@ -445,7 +415,86 @@ func (b *llvmBackend) genInstr(instr *ir.Instruction) {
 		fmt.Fprintf(b.out, "\t%s = zext i1 %s to %s\n", resultName, i1Temp, b.wordType)
 		b.tempTypes[resultName] = b.wordType
 
-	default: // Other Binary ops
+	case ir.OpNegF:
+		opStr, _ := b.formatOp(instr.Op)
+		valType := b.formatType(instr.Typ)
+		arg := b.prepareArg(instr.Args[0], valType)
+		fmt.Fprintf(b.out, "%s = %s %s %s\n", resultName, opStr, valType, arg)
+		b.tempTypes[resultName] = valType
+	case ir.OpSub, ir.OpSubF, ir.OpMul, ir.OpMulF, ir.OpDiv, ir.OpDivF, ir.OpRem, ir.OpRemF, ir.OpAnd, ir.OpOr, ir.OpXor, ir.OpShl, ir.OpShr:
+		opStr, _ := b.formatOp(instr.Op)
+		valType := b.formatType(instr.Typ)
+		lhs := b.prepareArg(instr.Args[0], valType)
+		rhs := b.prepareArg(instr.Args[1], valType)
+		fmt.Fprintf(b.out, "%s = %s %s %s, %s\n", resultName, opStr, valType, lhs, rhs)
+		b.tempTypes[resultName] = valType
+
+	case ir.OpBlit:
+		if len(instr.Args) >= 2 {
+			srcPtr := b.prepareArg(instr.Args[0], "i8*")
+			dstPtr := b.prepareArg(instr.Args[1], "i8*")
+			var sizeVal string
+			if len(instr.Args) >= 3 {
+				sizeVal = b.prepareArg(instr.Args[2], b.wordType)
+			} else {
+				sizeVal = fmt.Sprintf("%d", ir.SizeOfType(instr.Typ, b.cfg.WordSize))
+			}
+			fmt.Fprintf(b.out, "call void @llvm.memcpy.p0i8.p0i8.i64(i8* %s, i8* %s, i64 %s, i1 false)\n",
+				dstPtr, srcPtr, sizeVal)
+		}
+
+	case ir.OpSWToF, ir.OpSLToF:
+		valType := b.formatType(instr.Typ)
+		srcType := b.wordType
+		if instr.Op == ir.OpSWToF { srcType = "i32" }
+		srcVal := b.prepareArg(instr.Args[0], srcType)
+		fmt.Fprintf(b.out, "%s = sitofp %s %s to %s\n", resultName, srcType, srcVal, valType)
+		b.tempTypes[resultName] = valType
+
+	case ir.OpFToF:
+		valType := b.formatType(instr.Typ)
+		srcType := b.getType(instr.Args[0])
+		srcVal := b.prepareArg(instr.Args[0], srcType)
+
+		var castOp string
+		if valType == "double" && srcType == "float" {
+			castOp = "fpext"
+		} else if valType == "float" && srcType == "double" {
+			castOp = "fptrunc"
+		} else {
+			castOp = "bitcast"
+		}
+		fmt.Fprintf(b.out, "%s = %s %s %s to %s\n", resultName, castOp, srcType, srcVal, valType)
+		b.tempTypes[resultName] = valType
+
+	case ir.OpFToSI, ir.OpFToUI:
+		valType := b.formatType(instr.Typ)
+		srcType := b.getType(instr.Args[0])
+		srcVal := b.prepareArg(instr.Args[0], srcType)
+		castOp := "fptosi"
+		if instr.Op == ir.OpFToUI { castOp = "fptoui" }
+		fmt.Fprintf(b.out, "%s = %s %s %s to %s\n", resultName, castOp, srcType, srcVal, valType)
+		b.tempTypes[resultName] = valType
+
+	case ir.OpExtSB, ir.OpExtUB, ir.OpExtSH, ir.OpExtUH, ir.OpExtSW, ir.OpExtUW:
+		valType := b.formatType(instr.Typ)
+		var srcType, castOp string
+		switch instr.Op {
+		case ir.OpExtSB, ir.OpExtUB:
+			srcType, castOp = "i8", "sext"
+			if instr.Op == ir.OpExtUB { castOp = "zext" }
+		case ir.OpExtSH, ir.OpExtUH:
+			srcType, castOp = "i16", "sext"
+			if instr.Op == ir.OpExtUH { castOp = "zext" }
+		case ir.OpExtSW, ir.OpExtUW:
+			srcType, castOp = "i32", "sext"
+			if instr.Op == ir.OpExtUW { castOp = "zext" }
+		}
+		srcVal := b.prepareArg(instr.Args[0], srcType)
+		fmt.Fprintf(b.out, "%s = %s %s %s to %s\n", resultName, castOp, srcType, srcVal, valType)
+		b.tempTypes[resultName] = valType
+
+	default:
 		opStr, _ := b.formatOp(instr.Op)
 		valType := b.formatType(instr.Typ)
 		lhs := b.prepareArg(instr.Args[0], valType)
@@ -470,24 +519,18 @@ func (b *llvmBackend) genPhi(instr *ir.Instruction) string {
 		}
 	}
 
-	if hasPtrInput && hasIntInput {
-		phiType = "i8*"
-	}
+	if hasPtrInput && hasIntInput { phiType = "i8*" }
 
 	var pairs []string
 	for i := 0; i < len(instr.Args); i += 2 {
 		labelName := instr.Args[i].String()
-		if labelName == "start" {
-			labelName = "entry"
-		}
+		if labelName == "start" { labelName = "entry" }
 		val := b.prepareArgForPhi(instr.Args[i+1], phiType)
 		pairs = append(pairs, fmt.Sprintf("[ %s, %%%s ]", val, labelName))
 	}
 
 	phiResultName := resultName
-	if phiType != originalResultType {
-		phiResultName = b.newBackendTemp()
-	}
+	if phiType != originalResultType { phiResultName = b.newBackendTemp() }
 
 	fmt.Fprintf(b.out, "\t%s = phi %s %s\n", phiResultName, phiType, strings.Join(pairs, ", "))
 	b.tempTypes[phiResultName] = phiType
@@ -503,22 +546,14 @@ func (b *llvmBackend) prepareArgForPhi(v ir.Value, targetType string) string {
 	valStr := b.formatValue(v)
 	currentType := b.getType(v)
 
-	if currentType == targetType || currentType == "unknown" {
-		return valStr
-	}
+	if currentType == targetType || currentType == "unknown" { return valStr }
 
 	if c, isConst := v.(*ir.Const); isConst {
-		if strings.HasSuffix(targetType, "*") && c.Value == 0 {
-			return "null"
-		}
-		if strings.HasSuffix(targetType, "*") {
-			return fmt.Sprintf("inttoptr (%s %s to %s)", currentType, valStr, targetType)
-		}
+		if strings.HasSuffix(targetType, "*") && c.Value == 0 { return "null" }
+		if strings.HasSuffix(targetType, "*") { return fmt.Sprintf("inttoptr (%s %s to %s)", currentType, valStr, targetType) }
 	}
 
-	if _, isGlobal := v.(*ir.Global); isGlobal {
-		return fmt.Sprintf("bitcast (%s %s to %s)", currentType, valStr, targetType)
-	}
+	if _, isGlobal := v.(*ir.Global); isGlobal { return fmt.Sprintf("bitcast (%s %s to %s)", currentType, valStr, targetType) }
 	return valStr
 }
 
@@ -535,7 +570,6 @@ func (b *llvmBackend) genAdd(instr *ir.Instruction) {
 	isLhsPtr := strings.HasSuffix(lhsType, "*") || (isLhsGlobal && !isLhsFunc)
 	isRhsPtr := strings.HasSuffix(rhsType, "*") || (isRhsGlobal && !isRhsFunc)
 
-	// Case 1: Pointer + Integer arithmetic
 	if (isLhsPtr && !isRhsPtr) || (!isLhsPtr && isRhsPtr) {
 		var ptr ir.Value
 		var ptrType string
@@ -546,9 +580,7 @@ func (b *llvmBackend) genAdd(instr *ir.Instruction) {
 			ptr, ptrType, offset = rhs, rhsType, lhs
 		}
 
-		if ptrType == "unknown" {
-			ptrType = "i8*"
-		}
+		if ptrType == "unknown" { ptrType = "i8*" }
 
 		i8PtrVal := b.prepareArg(ptr, "i8*")
 		offsetVal := b.prepareArg(offset, b.wordType)
@@ -566,7 +598,6 @@ func (b *llvmBackend) genAdd(instr *ir.Instruction) {
 		return
 	}
 
-	// Case 2: Pointer + Pointer (B-specific, treat as integer addition)
 	if isLhsPtr && isRhsPtr {
 		lhsInt := b.prepareArg(lhs, b.wordType)
 		rhsInt := b.prepareArg(rhs, b.wordType)
@@ -580,7 +611,6 @@ func (b *llvmBackend) genAdd(instr *ir.Instruction) {
 		return
 	}
 
-	// Case 3: Operands are not pointers.
 	resultType := b.formatType(instr.Typ)
 	if strings.HasSuffix(resultType, "*") {
 		lhsInt := b.prepareArg(lhs, b.wordType)
@@ -602,9 +632,7 @@ func (b *llvmBackend) genAdd(instr *ir.Instruction) {
 
 func (b *llvmBackend) genCall(instr *ir.Instruction) {
 	resultName := ""
-	if instr.Result != nil {
-		resultName = b.formatValue(instr.Result)
-	}
+	if instr.Result != nil { resultName = b.formatValue(instr.Result) }
 
 	callee := instr.Args[0]
 	calleeStr := b.formatValue(callee)
@@ -616,9 +644,7 @@ func (b *llvmBackend) genCall(instr *ir.Instruction) {
 		if instr.ArgTypes != nil && i < len(instr.ArgTypes) {
 			targetType = b.formatType(instr.ArgTypes[i])
 		} else if g, ok := arg.(*ir.Global); ok {
-			if _, isString := b.prog.IsStringLabel(g.Name); isString {
-				targetType = "i8*"
-			}
+			if _, isString := b.prog.IsStringLabel(g.Name); isString { targetType = "i8*" }
 		}
 		valStr := b.prepareArg(arg, targetType)
 		argParts = append(argParts, fmt.Sprintf("%s %s", targetType, valStr))
@@ -655,14 +681,11 @@ func (b *llvmBackend) prepareArg(v ir.Value, targetType string) string {
 		}
 	}
 
-	if _, ok := v.(*ir.Const); ok {
-		return valStr
-	}
+	if _, ok := v.(*ir.Const); ok { return valStr }
+	if _, ok := v.(*ir.FloatConst); ok { return valStr }
 
 	currentType := b.getType(v)
-	if currentType == targetType || currentType == "unknown" {
-		return valStr
-	}
+	if currentType == targetType || currentType == "unknown" { return valStr }
 
 	castTemp := b.newBackendTemp()
 	b.out.WriteString("\t")
@@ -679,50 +702,33 @@ func (b *llvmBackend) formatCast(sourceName, targetName, sourceType, targetType 
 
 	var castOp string
 	switch {
-	case sourceType == "i1" && isTargetInt:
-		castOp = "zext"
-	case isSourceInt && targetType == "i1":
-		return fmt.Sprintf("%s = icmp ne %s %s, 0", targetName, sourceType, sourceName)
-	case isSourceInt && isTargetPtr:
-		castOp = "inttoptr"
-	case isSourcePtr && isTargetInt:
-		castOp = "ptrtoint"
-	case isSourcePtr && isTargetPtr:
-		castOp = "bitcast"
+	case sourceType == "i1" && isTargetInt: castOp = "zext"
+	case isSourceInt && targetType == "i1": return fmt.Sprintf("%s = icmp ne %s %s, 0", targetName, sourceType, sourceName)
+	case isSourceInt && isTargetPtr: castOp = "inttoptr"
+	case isSourcePtr && isTargetInt: castOp = "ptrtoint"
+	case isSourcePtr && isTargetPtr: castOp = "bitcast"
 	case isSourceInt && isTargetInt:
 		sourceBits, _ := strconv.Atoi(strings.TrimPrefix(sourceType, "i"))
 		targetBits, _ := strconv.Atoi(strings.TrimPrefix(targetType, "i"))
 		castOp = "sext"
-		if sourceBits > targetBits {
-			castOp = "trunc"
-		}
-	case isSourceInt && isTargetFloat:
-		castOp = "sitofp"
-	case isSourceFloat && isTargetInt:
-		castOp = "fptosi"
+		if sourceBits > targetBits { castOp = "trunc" }
+	case isSourceInt && isTargetFloat: castOp = "sitofp"
+	case isSourceFloat && isTargetInt: castOp = "fptosi"
 	case isSourceFloat && isTargetFloat:
 		castOp = "fpext"
-		if sourceType == "double" {
-			castOp = "fptrunc"
-		}
-	default:
-		castOp = "bitcast"
+		if sourceType == "double" { castOp = "fptrunc" }
+	default: castOp = "bitcast"
 	}
 	return fmt.Sprintf("%s = %s %s %s to %s", targetName, castOp, sourceType, sourceName, targetType)
 }
 
 func (b *llvmBackend) getType(v ir.Value) string {
 	valStr := b.formatValue(v)
-	if t, ok := b.tempTypes[valStr]; ok {
-		return t
-	}
-	if _, ok := v.(*ir.Const); ok {
-		return b.wordType
-	}
+	if t, ok := b.tempTypes[valStr]; ok { return t }
+	if _, ok := v.(*ir.Const); ok { return b.wordType }
+	if fc, ok := v.(*ir.FloatConst); ok { return b.formatType(fc.Typ) }
 	if g, ok := v.(*ir.Global); ok {
-		if _, isString := b.prog.IsStringLabel(g.Name); isString {
-			return "i8*"
-		}
+		if _, isString := b.prog.IsStringLabel(g.Name); isString { return "i8*" }
 	}
 	return "unknown"
 }
@@ -734,88 +740,68 @@ func (b *llvmBackend) newBackendTemp() string {
 }
 
 func (b *llvmBackend) formatValue(v ir.Value) string {
-	if v == nil {
-		return "void"
-	}
+	if v == nil { return "void" }
 	switch val := v.(type) {
-	case *ir.Const:
-		return fmt.Sprintf("%d", val.Value)
-	case *ir.Global:
-		return "@" + val.Name
+	case *ir.Const: return fmt.Sprintf("%d", val.Value)
+	case *ir.FloatConst:
+		if val.Typ == ir.TypeS {
+			float32Val := float32(val.Value)
+			float64Val := float64(float32Val)
+			return fmt.Sprintf("0x%016X", math.Float64bits(float64Val))
+		} else {
+			return fmt.Sprintf("0x%016X", math.Float64bits(val.Value))
+		}
+	case *ir.Global: return "@" + val.Name
 	case *ir.Temporary:
 		safeName := strings.NewReplacer(".", "_", "[", "_", "]", "_").Replace(val.Name)
-		if safeName != "" {
-			return fmt.Sprintf("%%.%s_%d", safeName, val.ID)
-		}
+		if val.ID == -1 { return "%" + safeName }
+		if safeName != "" { return fmt.Sprintf("%%.%s_%d", safeName, val.ID) }
 		return fmt.Sprintf("%%t%d", val.ID)
-	case *ir.Label:
-		return "%" + val.Name
-	case *ir.CastValue:
-		return b.formatValue(val.Value)
-	default:
-		return ""
+	case *ir.Label: return "%" + val.Name
+	case *ir.CastValue: return b.formatValue(val.Value)
+	default: return ""
 	}
 }
 
 func (b *llvmBackend) formatType(t ir.Type) string {
 	switch t {
-	case ir.TypeB:
-		return "i8"
-	case ir.TypeH:
-		return "i16"
-	case ir.TypeW:
-		return "i32"
-	case ir.TypeL:
-		return "i64"
-	case ir.TypeS:
-		return "float"
-	case ir.TypeD:
-		return "double"
-	case ir.TypeNone:
-		return "void"
-	case ir.TypePtr:
-		return "i8*"
-	default:
-		return b.wordType
+	case ir.TypeB: return "i8"
+	case ir.TypeH: return "i16"
+	case ir.TypeW: return "i32"
+	case ir.TypeL: return "i64"
+	case ir.TypeS: return "float"
+	case ir.TypeD: return "double"
+	case ir.TypeNone: return "void"
+	case ir.TypePtr: return "i8*"
+	default: return b.wordType
 	}
 }
 
 func (b *llvmBackend) formatOp(op ir.Op) (string, string) {
 	switch op {
-	case ir.OpAdd:
-		return "add", ""
-	case ir.OpSub:
-		return "sub", ""
-	case ir.OpMul:
-		return "mul", ""
-	case ir.OpDiv:
-		return "sdiv", ""
-	case ir.OpRem:
-		return "srem", ""
-	case ir.OpAnd:
-		return "and", ""
-	case ir.OpOr:
-		return "or", ""
-	case ir.OpXor:
-		return "xor", ""
-	case ir.OpShl:
-		return "shl", ""
-	case ir.OpShr:
-		return "ashr", ""
-	case ir.OpCEq:
-		return "icmp", "eq"
-	case ir.OpCNeq:
-		return "icmp", "ne"
-	case ir.OpCLt:
-		return "icmp", "slt"
-	case ir.OpCGt:
-		return "icmp", "sgt"
-	case ir.OpCLe:
-		return "icmp", "sle"
-	case ir.OpCGe:
-		return "icmp", "sge"
-	default:
-		return "unknown_op", ""
+	case ir.OpAdd: return "add", ""
+	case ir.OpSub: return "sub", ""
+	case ir.OpMul: return "mul", ""
+	case ir.OpDiv: return "sdiv", ""
+	case ir.OpRem: return "srem", ""
+	case ir.OpAddF: return "fadd", ""
+	case ir.OpSubF: return "fsub", ""
+	case ir.OpMulF: return "fmul", ""
+	case ir.OpDivF: return "fdiv", ""
+	case ir.OpRemF: return "frem", ""
+	case ir.OpNegF: return "fneg", ""
+	case ir.OpAnd: return "and", ""
+	case ir.OpOr: return "or", ""
+	case ir.OpXor: return "xor", ""
+	case ir.OpShl: return "shl", ""
+	case ir.OpShr: return "ashr", ""
+	case ir.OpCEq: return "icmp", "eq"
+	case ir.OpCNeq: return "icmp", "ne"
+	case ir.OpCLt: return "icmp", "slt"
+	case ir.OpCGt: return "icmp", "sgt"
+	case ir.OpCLe: return "icmp", "sle"
+	case ir.OpCGe: return "icmp", "sge"
+	default: return "unknown_op", ""
 	}
 }
 
@@ -829,4 +815,17 @@ func (b *llvmBackend) escapeString(s string) string {
 		}
 	}
 	return sb.String()
+}
+
+func (b *llvmBackend) isPointerValue(v ir.Value) bool {
+	if g, ok := v.(*ir.Global); ok {
+		if _, isString := b.prog.IsStringLabel(g.Name); isString { return true }
+		return b.prog.FindFunc(g.Name) == nil && b.funcSigs[g.Name] == ""
+	}
+	return false
+}
+
+func (b *llvmBackend) prepareArgForComparison(v ir.Value, targetType string) string {
+	if c, isConst := v.(*ir.Const); isConst && c.Value == 0 && strings.HasSuffix(targetType, "*") { return "null" }
+	return b.prepareArg(v, targetType)
 }

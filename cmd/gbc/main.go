@@ -202,17 +202,21 @@ func findLibrary(libName string, userPaths []string, cfg *config.Config) string 
 	// Search for libraries matching the target architecture and OS
 	filenames := []string{
 		fmt.Sprintf("%s_%s_%s.b", libName, cfg.GOARCH, cfg.GOOS),
-		fmt.Sprintf("%s_%s.b", libName, cfg.GOARCH),
 		fmt.Sprintf("%s_%s.b", libName, cfg.GOOS),
+		fmt.Sprintf("%s_%s.b", libName, cfg.GOARCH),
 		fmt.Sprintf("%s.b", libName),
 		fmt.Sprintf("%s/%s_%s.b", libName, cfg.GOARCH, cfg.GOOS),
-		fmt.Sprintf("%s/%s.b", libName, cfg.GOARCH),
 		fmt.Sprintf("%s/%s.b", libName, cfg.GOOS),
+		fmt.Sprintf("%s/%s.b", libName, cfg.GOARCH),
+		fmt.Sprintf("%s/%s.b", libName, libName),
 	}
 	searchPaths := append(userPaths, []string{"./lib", "/usr/local/lib/gbc", "/usr/lib/gbc", "/lib/gbc"}...)
 	for _, path := range searchPaths {
+		//fmt.Println("path:", path)
 		for _, fname := range filenames {
+			//fmt.Println("fname:", fname)
 			fullPath := filepath.Join(path, fname)
+			//fmt.Println("fullPath:", fullPath)
 			if _, err := os.Stat(fullPath); err == nil {
 				return fullPath
 			}

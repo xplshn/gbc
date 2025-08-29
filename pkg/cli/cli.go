@@ -210,8 +210,40 @@ func (f *FlagSet) Parse(arguments []string) error {
 				return err
 			}
 		} else {
-			if err := f.parseShortFlag(arg, arguments, &i); err != nil {
-				return err
+			// Check if it's a long option with a single dash, e.g., -std=b or -pedantic
+			name := arg[1:]
+			if strings.Contains(name, "=") {
+				name = strings.SplitN(name, "=", 2)[0]
+			}
+
+			flag, ok := f.flags[name]
+			if ok {
+				// It's a long flag with a single dash. Parse it.
+				parts := strings.SplitN(arg[1:], "=", 2)
+				if len(parts) == 2 {
+					if err := flag.Value.Set(parts[1]); err != nil {
+						return err
+					}
+				} else {
+					if _, isBool := flag.Value.(*boolValue); isBool {
+						if err := flag.Value.Set(""); err != nil {
+							return err
+						}
+					} else {
+						if i+1 >= len(arguments) {
+							return fmt.Errorf("flag needs an argument: -%s", name)
+						}
+						i++
+						if err := flag.Value.Set(arguments[i]); err != nil {
+							return err
+						}
+					}
+				}
+			} else {
+				// Fallback to original short flag parsing
+				if err := f.parseShortFlag(arg, arguments, &i); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -297,7 +329,7 @@ func (a *App) Run(arguments []string) error {
 
 	if err := a.FlagSet.Parse(arguments); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		a.generateHelpPage(os.Stderr)
+		a.generateUsagePage(os.Stderr)
 		return err
 	}
 	if help {
@@ -308,6 +340,42 @@ func (a *App) Run(arguments []string) error {
 		return a.Action(a.FlagSet.Args())
 	}
 	return nil
+}
+
+func (a *App) generateUsagePage(w *os.File) {
+	var sb strings.Builder
+	termWidth := getTerminalWidth()
+	indent := NewIndentState()
+
+	// Use [] for mandatory and <> for optional as requested
+	fmt.Fprintf(&sb, "Usage: %s <options> [input.b] ...\n", a.Name)
+
+	optionFlags := a.getOptionFlags()
+	if len(optionFlags) > 0 {
+		// Calculate max widths for alignment within the options section
+		maxFlagWidth := 0
+		maxUsageWidth := 0
+		for _, flag := range optionFlags {
+			flagStrLen := len(a.formatFlagString(flag))
+			if flagStrLen > maxFlagWidth {
+				maxFlagWidth = flagStrLen
+			}
+			usageLen := len(flag.Usage)
+			if usageLen > maxUsageWidth {
+				maxUsageWidth = usageLen
+			}
+		}
+
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, "%sOptions\n", indent.AtLevel(1))
+		sort.Slice(optionFlags, func(i, j int) bool { return optionFlags[i].Name < optionFlags[j].Name })
+		for _, flag := range optionFlags {
+			a.formatFlagLine(&sb, flag, indent, termWidth, maxFlagWidth, maxUsageWidth)
+		}
+	}
+
+	fmt.Fprintf(&sb, "\nRun '%s --help' for all available options and flags.\n", a.Name)
+	fmt.Fprint(w, sb.String())
 }
 
 func (a *App) generateHelpPage(w *os.File) {
@@ -344,7 +412,10 @@ func (a *App) generateHelpPage(w *os.File) {
 	if a.Synopsis != "" {
 		sb.WriteString("\n")
 		fmt.Fprintf(&sb, "%sSynopsis\n", indent.AtLevel(1))
-		fmt.Fprintf(&sb, "%s%s %s\n", indent.AtLevel(2), a.Name, a.Synopsis)
+		// Use [] for mandatory and <> for optional as requested for the synopsis
+		synopsis := strings.ReplaceAll(a.Synopsis, "[", "<")
+		synopsis = strings.ReplaceAll(synopsis, "]", ">")
+		fmt.Fprintf(&sb, "%s%s %s\n", indent.AtLevel(2), a.Name, synopsis)
 	}
 
 	if a.Description != "" {
@@ -436,7 +507,10 @@ func (a *App) formatFlagString(flag *Flag) string {
 	} else {
 		fmt.Fprintf(&flagStr, "--%s", flag.Name)
 		if !isBool {
-			fmt.Fprintf(&flagStr, "<%s>", flag.ExpectedType)
+			// Use equals for long flags that take a value for clarity
+			if flag.ExpectedType != "" {
+				fmt.Fprintf(&flagStr, "=%s", flag.ExpectedType)
+			}
 		}
 	}
 	return flagStr.String()
