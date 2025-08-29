@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-577875724/f59c0b8397f3e24d",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-577875724/f59c0b8397f3e24d'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\n",
+    "exitCode": 0,
+    "duration": 20100325,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 307956,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 313210,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 307101,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 449910,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 330954,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 493391,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 346220,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 316918,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "n1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 319520,
+        "timed_out": false
+      }
+    }
+  ]
+}

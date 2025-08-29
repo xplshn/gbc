@@ -1,0 +1,10 @@
+{
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\nunknownIdentifier.bx:3:5: \u001b[31merror\u001b[0m:\n \u001b[90m   2 | \u001b[0m    a := 42;\n \u001b[1;90m   3 | \u001b[0m    a();  // OK, OK, calling it...\n    \u001b[1;90m- | \u001b[0m\u001b[31m    ^\u001b[0m \u001b[3m'a' is a variable but is used as a function\u001b[0m \u001b[3m\u001b[90m(emitted from \u001b[1;90mcodegen_helpers.go\u001b[0m)\u001b[0m\u001b[0m\u001b[0m\n \u001b[90m   4 | \u001b[0m}\n\n",
+    "exitCode": 1,
+    "duration": 2462372,
+    "timed_out": false
+  },
+  "runs": null
+}

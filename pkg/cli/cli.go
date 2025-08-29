@@ -1,4 +1,3 @@
-// package cli is ugly and tries but fails miserably at being a general-purpose, usable CLi library
 package cli
 
 import (
@@ -12,7 +11,6 @@ import (
 	"golang.org/x/term"
 )
 
-// IndentState manages hierarchical indentation levels
 type IndentState struct {
 	levels   []uint8
 	baseUnit uint8
@@ -45,7 +43,6 @@ func (is *IndentState) AtLevel(level int) string {
 	return strings.Repeat(" ", int(is.baseUnit*uint8(level)))
 }
 
-// Value is the interface to the dynamic value stored in a flag
 type Value interface {
 	String() string
 	Set(string) error
@@ -63,7 +60,6 @@ type boolValue struct{ p *bool }
 
 func (v *boolValue) Set(s string) error {
 	val, err := strconv.ParseBool(s)
-	// Allow setting a bool flag without a value, e.g., --verbose
 	if err != nil && s != "" {
 		return fmt.Errorf("invalid boolean value '%s': %w", s, err)
 	}
@@ -89,21 +85,20 @@ type Flag struct {
 	Usage        string
 	Value        Value
 	DefValue     string
-	ExpectedType string // Type placeholder for non-boolean flags (e.g., "<file>")
+	ExpectedType string
 }
 
-// FlagGroup is a collection of related flags, like feature or warning flags
 type FlagGroup struct {
 	Name                 string
 	Description          string
 	Flags                []FlagGroupEntry
-	GroupType            string // e.g., "warning flag", "feature flag"
-	AvailableFlagsHeader string // e.g., "Available Warning Flags:"
+	GroupType            string
+	AvailableFlagsHeader string
 }
 
 type FlagGroupEntry struct {
-	Name     string // Name without prefix (e.g., "all" for "-Wall")
-	Prefix   string // Group prefix (e.g., "W", "F")
+	Name     string
+	Prefix   string
 	Usage    string
 	Enabled  *bool
 	Disabled *bool
@@ -139,20 +134,17 @@ func (f *FlagSet) Bool(p *bool, name, shorthand string, value bool, usage string
 	f.Var(newBoolValue(p), name, shorthand, usage, strconv.FormatBool(value), "")
 }
 
-// List defines a flag that can be specified multiple times to build a list of strings
 func (f *FlagSet) List(p *[]string, name, shorthand string, value []string, usage, expectedType string) {
 	*p = value
 	f.Var(newListValue(p), name, shorthand, usage, fmt.Sprintf("%v", value), expectedType)
 }
 
-// Special defines a flag with a prefix that captures the value directly, like -lm for library 'm'
 func (f *FlagSet) Special(p *[]string, prefix, usage, expectedType string) {
 	*p = []string{}
 	f.Var(newListValue(p), prefix, "", usage, "", expectedType)
 	f.specialPrefix[prefix] = f.flags[prefix]
 }
 
-// DefineGroupFlags registers the enable/disable flags for a set of flag group entries.
 func (f *FlagSet) DefineGroupFlags(entries []FlagGroupEntry) {
 	for i := range entries {
 		if entries[i].Enabled != nil {
@@ -210,7 +202,6 @@ func (f *FlagSet) Parse(arguments []string) error {
 				return err
 			}
 		} else {
-			// Check if it's a long option with a single dash, e.g., -std=b or -pedantic
 			name := arg[1:]
 			if strings.Contains(name, "=") {
 				name = strings.SplitN(name, "=", 2)[0]
@@ -218,7 +209,6 @@ func (f *FlagSet) Parse(arguments []string) error {
 
 			flag, ok := f.flags[name]
 			if ok {
-				// It's a long flag with a single dash. Parse it.
 				parts := strings.SplitN(arg[1:], "=", 2)
 				if len(parts) == 2 {
 					if err := flag.Value.Set(parts[1]); err != nil {
@@ -240,7 +230,6 @@ func (f *FlagSet) Parse(arguments []string) error {
 					}
 				}
 			} else {
-				// Fallback to original short flag parsing
 				if err := f.parseShortFlag(arg, arguments, &i); err != nil {
 					return err
 				}
@@ -264,7 +253,7 @@ func (f *FlagSet) parseLongFlag(arg string, arguments []string, i *int) error {
 		return flag.Value.Set(parts[1])
 	}
 	if _, isBool := flag.Value.(*boolValue); isBool {
-		return flag.Value.Set("") // E.g., --verbose
+		return flag.Value.Set("")
 	}
 	if *i+1 >= len(arguments) {
 		return fmt.Errorf("flag needs an argument: --%s", name)
@@ -274,7 +263,6 @@ func (f *FlagSet) parseLongFlag(arg string, arguments []string, i *int) error {
 }
 
 func (f *FlagSet) parseShortFlag(arg string, arguments []string, i *int) error {
-	// Handle special prefix flags like -I/path/to/include or -lm
 	for prefix, flag := range f.specialPrefix {
 		if strings.HasPrefix(arg, "-"+prefix) && len(arg) > len(prefix)+1 {
 			return flag.Value.Set(arg[len(prefix)+1:])
@@ -287,9 +275,8 @@ func (f *FlagSet) parseShortFlag(arg string, arguments []string, i *int) error {
 		return fmt.Errorf("unknown shorthand flag: -%s", shorthand)
 	}
 	if _, isBool := flag.Value.(*boolValue); isBool {
-		return flag.Value.Set("") // E.g., -h
+		return flag.Value.Set("")
 	}
-	// assume -o <val> and not combined short flags
 	value := arg[2:]
 	if value == "" {
 		if *i+1 >= len(arguments) {
@@ -347,12 +334,10 @@ func (a *App) generateUsagePage(w *os.File) {
 	termWidth := getTerminalWidth()
 	indent := NewIndentState()
 
-	// Use [] for mandatory and <> for optional as requested
 	fmt.Fprintf(&sb, "Usage: %s <options> [input.b] ...\n", a.Name)
 
 	optionFlags := a.getOptionFlags()
 	if len(optionFlags) > 0 {
-		// Calculate max widths for alignment within the options section
 		maxFlagWidth := 0
 		maxUsageWidth := 0
 		for _, flag := range optionFlags {
@@ -385,14 +370,13 @@ func (a *App) generateHelpPage(w *os.File) {
 
 	globalMaxWidth := a.calculateGlobalMaxWidth()
 
-	// Calculate the maximum usage string width across all flag sections for alignment
 	globalMaxUsageWidth := 0
 	updateMaxUsage := func(s string) {
 		if len(s) > globalMaxUsageWidth {
 			globalMaxUsageWidth = len(s)
 		}
 	}
-	optionFlags := a.getOptionFlags() // Get once to reuse
+	optionFlags := a.getOptionFlags()
 	for _, flag := range optionFlags {
 		updateMaxUsage(flag.Usage)
 	}
@@ -412,7 +396,6 @@ func (a *App) generateHelpPage(w *os.File) {
 	if a.Synopsis != "" {
 		sb.WriteString("\n")
 		fmt.Fprintf(&sb, "%sSynopsis\n", indent.AtLevel(1))
-		// Use [] for mandatory and <> for optional as requested for the synopsis
 		synopsis := strings.ReplaceAll(a.Synopsis, "[", "<")
 		synopsis = strings.ReplaceAll(synopsis, "]", ">")
 		fmt.Fprintf(&sb, "%s%s %s\n", indent.AtLevel(2), a.Name, synopsis)
@@ -507,7 +490,6 @@ func (a *App) formatFlagString(flag *Flag) string {
 	} else {
 		fmt.Fprintf(&flagStr, "--%s", flag.Name)
 		if !isBool {
-			// Use equals for long flags that take a value for clarity
 			if flag.ExpectedType != "" {
 				fmt.Fprintf(&flagStr, "=%s", flag.ExpectedType)
 			}
@@ -583,7 +565,7 @@ func (a *App) formatFlagGroup(sb *strings.Builder, group FlagGroup, indent *Inde
 	prefix := group.Flags[0].Prefix
 	groupType := group.GroupType
 	if groupType == "" {
-		groupType = "flag" // Default value if not provided
+		groupType = "flag"
 	}
 
 	fmt.Fprintf(sb, "%s%-*s Enable a specific %s\n", indent.AtLevel(2), globalMaxWidth, fmt.Sprintf("-%s<%s>", prefix, groupType), groupType)
