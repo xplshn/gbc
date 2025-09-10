@@ -1,5 +1,6 @@
 .*
 *.o
+*.out
 output.*
 lib/qbe/obj
 ./cbc
@@ -12,3 +13,4 @@ tests/.build
 output_*
 ./cmd/gtest/gtest
 ./cmd/gbc/gbc
+./gbc

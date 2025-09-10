@@ -1114,14 +1114,12 @@ func (tc *TypeChecker) getBinaryOpResultType(op token.Type, left, right *ast.BxT
 
 		// For untyped + untyped, emit warning
 		if leftIsLiteral && rightIsLiteral {
-			// Both are literals, use DebugComp warning
 			if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
 				util.Warn(tc.cfg, config.WarnDebugComp, tok, "Operation between untyped operands")
 			}
 		} else {
-			// At least one is not a literal, use prom-types warning
 			if tc.cfg.IsWarningEnabled(config.WarnPromTypes) {
-				util.Warn(tc.cfg, config.WarnPromTypes, tok, "Operation between untyped operands")
+				util.Warn(tc.cfg, config.WarnDebugComp, tok, "Operation between untyped operands")
 			}
 		}
 		// Default to int type for untyped operations
@@ -1138,14 +1136,14 @@ func (tc *TypeChecker) getBinaryOpResultType(op token.Type, left, right *ast.BxT
 			leftIsLiteral := leftNode != nil && (leftNode.Type == ast.Number || leftNode.Type == ast.FloatNumber)
 
 			if leftIsLiteral {
-				// Literal promotion, use DebugComp warning
 				if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
 					util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped operand promoted to '%s'", ast.TypeToString(rType))
 				}
 			} else {
-				// Variable promotion, use prom-types warning
 				if tc.cfg.IsWarningEnabled(config.WarnPromTypes) {
-					util.Warn(tc.cfg, config.WarnPromTypes, tok, "Untyped operand promoted to '%s'", ast.TypeToString(rType))
+					if rType.Kind != ast.TYPE_UNTYPED {
+						util.Warn(tc.cfg, config.WarnPromTypes, tok, "Untyped operand promoted to '%s'", ast.TypeToString(rType))
+					}
 				}
 			}
 		}
@@ -1158,13 +1156,11 @@ func (tc *TypeChecker) getBinaryOpResultType(op token.Type, left, right *ast.BxT
 			rightIsLiteral := rightNode != nil && (rightNode.Type == ast.Number || rightNode.Type == ast.FloatNumber)
 
 			if rightIsLiteral {
-				// Literal promotion, use DebugComp warning
 				if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
 					util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped operand promoted to '%s'", ast.TypeToString(lType))
 				}
 			} else {
-				// Variable promotion, use prom-types warning
-				if tc.cfg.IsWarningEnabled(config.WarnPromTypes) {
+				if lType.Kind != ast.TYPE_UNTYPED {
 					util.Warn(tc.cfg, config.WarnPromTypes, tok, "Untyped operand promoted to '%s'", ast.TypeToString(lType))
 				}
 			}
@@ -1214,13 +1210,14 @@ func (tc *TypeChecker) getBinaryOpResultType(op token.Type, left, right *ast.BxT
 		if op == token.Minus && resLeft.Kind == ast.TYPE_POINTER && resRight.Kind == ast.TYPE_POINTER {
 			return ast.TypeInt
 		}
-		// Allow string concatenation: byte* + byte* -> byte* (for Plus operation only)
+		// Allow string concatenation: *byte + *byte -> *byte | (+ only)
 		if op == token.Plus && resLeft.Kind == ast.TYPE_POINTER && resRight.Kind == ast.TYPE_POINTER &&
 			resLeft.Base != nil && resRight.Base != nil &&
 			resLeft.Base.Kind == ast.TYPE_PRIMITIVE && resLeft.Base.Name == "byte" &&
 			resRight.Base.Kind == ast.TYPE_PRIMITIVE && resRight.Base.Name == "byte" {
 			return resLeft
 		}
+		// TODO: Support othe array types
 	}
 
 	tc.typeErrorOrWarn(tok, "Invalid binary operation between types '%s' and '%s'", ast.TypeToString(left), ast.TypeToString(right))
