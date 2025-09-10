@@ -149,14 +149,10 @@ func (tc *TypeChecker) getAlignof(typ *ast.BxType) int64 {
 		return int64(tc.wordSize)
 	}
 	switch typ.Kind {
-	case ast.TYPE_VOID:
-		return 1
-	case ast.TYPE_POINTER:
-		return int64(tc.wordSize)
-	case ast.TYPE_ARRAY:
-		return tc.getAlignof(typ.Base)
-	case ast.TYPE_PRIMITIVE, ast.TYPE_FLOAT, ast.TYPE_ENUM:
-		return tc.getSizeof(typ)
+	case ast.TYPE_VOID: return 1
+	case ast.TYPE_POINTER: return int64(tc.wordSize)
+	case ast.TYPE_ARRAY: return tc.getAlignof(typ.Base)
+	case ast.TYPE_PRIMITIVE, ast.TYPE_FLOAT, ast.TYPE_ENUM: return tc.getSizeof(typ)
 	case ast.TYPE_STRUCT:
 		var maxAlign int64 = 1
 		for _, field := range typ.Fields {
@@ -175,10 +171,8 @@ func (tc *TypeChecker) getSizeof(typ *ast.BxType) int64 {
 		return int64(tc.wordSize)
 	}
 	switch typ.Kind {
-	case ast.TYPE_VOID:
-		return 0
-	case ast.TYPE_POINTER:
-		return int64(tc.wordSize)
+	case ast.TYPE_VOID: return 0
+	case ast.TYPE_POINTER: return int64(tc.wordSize)
 	case ast.TYPE_ARRAY:
 		elemSize := tc.getSizeof(typ.Base)
 		var arrayLen int64 = 1

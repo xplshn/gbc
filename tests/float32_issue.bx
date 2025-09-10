@@ -3,18 +3,15 @@ extrn printf;
 int main() {
    float32 x, y;
    printf("Before: x = %.3f, y = %.3f\n", x, y);
-   
-   // Perform some float operations first
+
    float a = 8.50;
    float b = 7.50;
    printf("After float ops: a = %.3f, b = %.3f\n", a, b);
-   
-   // Now assign to float32 variables  
+
    x = 1.25;
    y = 2.75;
    printf("After assignment: x = %.3f, y = %.3f\n", x, y);
-   
-   // Check if they maintain their values
-   printf("Final check: x = %.3f, y = %.3f\n", x, y);
+
+   printf("result: x = %.3f, y = %.3f\n", x, y);
    return (0);
 }

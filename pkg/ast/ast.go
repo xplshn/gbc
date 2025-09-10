@@ -348,9 +348,7 @@ func NewDirective(tok token.Token, name string) *Node {
 }
 
 func FoldConstants(node *Node) *Node {
-	if node == nil {
-		return nil
-	}
+	if node == nil { return nil }
 
 	switch d := node.Data.(type) {
 	case AssignNode: d.Rhs = FoldConstants(d.Rhs); node.Data = d

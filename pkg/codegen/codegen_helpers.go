@@ -357,8 +357,7 @@ func (ctx *Context) codegenUnaryOp(node *ast.Node) (ir.Value, bool) {
 		} else {
 			ctx.addInstr(&ir.Instruction{Op: ir.OpSub, Typ: valType, Result: res, Args: []ir.Value{&ir.Const{Value: 0}, val}})
 		}
-	case token.Plus:
-		return val, false
+	case token.Plus: return val, false
 	case token.Not:
 		wordType := ir.GetType(nil, ctx.wordSize)
 		ctx.addInstr(&ir.Instruction{Op: ir.OpCEq, Typ: wordType, OperandType: valType, Result: res, Args: []ir.Value{val, &ir.Const{Value: 0}}})
@@ -909,55 +908,33 @@ func getBinaryOpAndType(op token.Type, resultAstType *ast.BxType, wordSize int) 
 	if resultAstType != nil && (resultAstType.Kind == ast.TYPE_FLOAT || resultAstType.Kind == ast.TYPE_LITERAL_FLOAT) {
 		typ := ir.GetType(resultAstType, wordSize)
 		switch op {
-		case token.Plus, token.PlusEq, token.EqPlus:
-			return ir.OpAddF, typ
-		case token.Minus, token.MinusEq, token.EqMinus:
-			return ir.OpSubF, typ
-		case token.Star, token.StarEq, token.EqStar:
-			return ir.OpMulF, typ
-		case token.Slash, token.SlashEq, token.EqSlash:
-			return ir.OpDivF, typ
-		case token.Rem, token.RemEq, token.EqRem:
-			return ir.OpRemF, typ
-		case token.EqEq:
-			return ir.OpCEq, typ
-		case token.Neq:
-			return ir.OpCNeq, typ
-		case token.Lt:
-			return ir.OpCLt, typ
-		case token.Gt:
-			return ir.OpCGt, typ
-		case token.Lte:
-			return ir.OpCLe, typ
-		case token.Gte:
-			return ir.OpCGe, typ
+		case token.Plus, token.PlusEq, token.EqPlus: return ir.OpAddF, typ
+		case token.Minus, token.MinusEq, token.EqMinus: return ir.OpSubF, typ
+		case token.Star, token.StarEq, token.EqStar: return ir.OpMulF, typ
+		case token.Slash, token.SlashEq, token.EqSlash: return ir.OpDivF, typ
+		case token.Rem, token.RemEq, token.EqRem: return ir.OpRemF, typ
+		case token.EqEq: return ir.OpCEq, typ
+		case token.Neq: return ir.OpCNeq, typ
+		case token.Lt: return ir.OpCLt, typ
+		case token.Gt: return ir.OpCGt, typ
+		case token.Lte: return ir.OpCLe, typ
+		case token.Gte: return ir.OpCGe, typ
 		}
 	}
 
 	typ := ir.GetType(resultAstType, wordSize)
 	switch op {
-	case token.Plus, token.PlusEq, token.EqPlus:
-		return ir.OpAdd, typ
-	case token.Minus, token.MinusEq, token.EqMinus:
-		return ir.OpSub, typ
-	case token.Star, token.StarEq, token.EqStar:
-		return ir.OpMul, typ
-	case token.Slash, token.SlashEq, token.EqSlash:
-		return ir.OpDiv, typ
-	case token.Rem, token.RemEq, token.EqRem:
-		return ir.OpRem, typ
-	case token.And, token.AndEq, token.EqAnd:
-		return ir.OpAnd, typ
-	case token.Or, token.OrEq, token.EqOr:
-		return ir.OpOr, typ
-	case token.Xor, token.XorEq, token.EqXor:
-		return ir.OpXor, typ
-	case token.Shl, token.ShlEq, token.EqShl:
-		return ir.OpShl, typ
-	case token.Shr, token.ShrEq, token.EqShr:
-		return ir.OpShr, typ
-	case token.EqEq:
-		return ir.OpCEq, typ
+	case token.Plus, token.PlusEq, token.EqPlus: return ir.OpAdd, typ
+	case token.Minus, token.MinusEq, token.EqMinus: return ir.OpSub, typ
+	case token.Star, token.StarEq, token.EqStar: return ir.OpMul, typ
+	case token.Slash, token.SlashEq, token.EqSlash: return ir.OpDiv, typ
+	case token.Rem, token.RemEq, token.EqRem: return ir.OpRem, typ
+	case token.And, token.AndEq, token.EqAnd: return ir.OpAnd, typ
+	case token.Or, token.OrEq, token.EqOr: return ir.OpOr, typ
+	case token.Xor, token.XorEq, token.EqXor: return ir.OpXor, typ
+	case token.Shl, token.ShlEq, token.EqShl: return ir.OpShl, typ
+	case token.Shr, token.ShrEq, token.EqShr: return ir.OpShr, typ
+	case token.EqEq: return ir.OpCEq, typ
 	case token.Neq:
 		return ir.OpCNeq, typ
 	case token.Lt:

@@ -589,9 +589,7 @@ func (a *App) formatFlagGroup(sb *strings.Builder, group FlagGroup, indent *Inde
 
 func getTerminalWidth() int {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		return 80
-	}
+	if err != nil { return 80 }
 	if width < 20 {
 		return 20
 	}

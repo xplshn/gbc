@@ -1,8 +1,0 @@
-extrn printf;
-
-int main() {
-   float32 x;
-   x = 1.25;
-   printf("x = %.3f\n", x);
-   return (0);
-}

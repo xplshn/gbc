@@ -35,9 +35,7 @@ func findFileAndLine(tok token.Token) (string, int, int) {
 
 func callerFile(skip int) string {
 	_, file, _, ok := runtime.Caller(skip)
-	if !ok {
-		return "<unknown>"
-	}
+	if !ok { return "<unknown>" }
 	return filepath.Base(file)
 }
 

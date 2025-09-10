@@ -486,8 +486,7 @@ func (b *qbeBackend) formatValue(v ir.Value) string {
 			return fmt.Sprintf("s_%f", float64(float32Val))
 		}
 		return fmt.Sprintf("%s_%f", b.formatType(val.Typ), val.Value)
-	case *ir.Global:
-		return "$" + val.Name
+	case *ir.Global: return "$" + val.Name
 	case *ir.Temporary:
 		safeName := strings.NewReplacer(".", "_", "[", "_", "]", "_").Replace(val.Name)
 		if val.ID == -1 {
@@ -497,8 +496,7 @@ func (b *qbeBackend) formatValue(v ir.Value) string {
 			return fmt.Sprintf("%%.%s_%d", safeName, val.ID)
 		}
 		return fmt.Sprintf("%%t%d", val.ID)
-	case *ir.Label:
-		return "@" + val.Name
+	case *ir.Label: return "@" + val.Name
 	default:
 		return ""
 	}

@@ -1,16 +1,13 @@
-// Test casting behavior - only function-style casts allowed for simple types
 main() {
     extrn printf, exit;
 
     auto a = 42;
 
-    // testing some basic casting
     b := int(a);
     c := (int(a) + 1);
 
     printf("Function-style casts: a=%d, int(a)=%d, (int(a)+1)=%d\n", a, b, c);
 
-    // testing pointer casting
     ptr := &a;
     byte_ptr := (byte*)ptr;
     int_ptr := (int*)byte_ptr;
@@ -18,17 +15,15 @@ main() {
 
     printf("Pointer casts work: value=%d\n", value);
 
-    // --- Others
     n1 := int8(8);
     n2 := int16(16);
     n3 := int32(32);
     n4 := int64(64);
-    // -
+    
     printf("n1(int8) : %d\n", n1);
     printf("n2(int16): %d\n", n2);
     printf("n3(int32): %d\n", n3);
     printf("n4(int64): %d\n", n4);
-    // ---
 
     exit(0);
 }

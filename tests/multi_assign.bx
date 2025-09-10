@@ -1,4 +1,3 @@
-// Test multi-assignment functionality with Bx typed syntax
 assert_equal(actual, expected, message) {
     extrn printf, abort;
     printf("%s: ", message);
@@ -13,7 +12,28 @@ assert_equal(actual, expected, message) {
 main() {
     extrn assert_equal;
     
-    // Test with typed variables and arrays (Bx style)
+    auto a, b;
+    a, b = 10, 20;
+    assert_equal(a, 10, "a, b = 10, 20; a == 10");
+    assert_equal(b, 20, "a, b = 10, 20; b == 20");
+    
+    auto x, y, z;
+    x, y, z = 100, 200, 300;
+    assert_equal(x, 100, "x, y, z = 100, 200, 300; x == 100");
+    assert_equal(y, 200, "x, y, z = 100, 200, 300; y == 200");
+    assert_equal(z, 300, "x, y, z = 100, 200, 300; z == 300");
+    
+    auto arr1 3, arr2 3;
+    arr1[0], arr2[0] = 50, 60;
+    assert_equal(arr1[0], 50, "arr1[0], arr2[0] = 50, 60; arr1[0] == 50");
+    assert_equal(arr2[0], 60, "arr1[0], arr2[0] = 50, 60; arr2[0] == 60");
+    
+    auto p, q, mixed 2;
+    p, mixed[1], q = 1000, 2000, 3000;
+    assert_equal(p, 1000, "p, mixed[1], q = 1000, 2000, 3000; p == 1000");
+    assert_equal(mixed[1], 2000, "p, mixed[1], q = 1000, 2000, 3000; mixed[1] == 2000");
+    assert_equal(q, 3000, "p, mixed[1], q = 1000, 2000, 3000; q == 3000");
+    
     int int_array[3];
     int other_array[3];
     

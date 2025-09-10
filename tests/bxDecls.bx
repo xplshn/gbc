@@ -4,23 +4,15 @@ puts(arg string){
     printf("%s\n", arg);
 }
 
-// TODO: Copilot: Make this yield an error: Tried to assign to undeclared identifier. Did you intend to use := ?
-// global_short_aaa = 10;  // Commented out - this is expected to be an error case
-
 global_short := 10;
-
 auto global_auto := 20;
-
 auto global_multi_1, global_multi_2 := 30, 40;
 
 main() {
     auto local_auto;
     local_auto = 50;
 
-    // Test short declaration
     local_short := 60;
-
-    // Test multi-short declaration
     local_multi_short_1, local_multi_short_2 := 70, 80;
 
     if (global_short != 10) {
@@ -48,6 +40,6 @@ main() {
         return (1);
     }
 
-    puts("PASS: All Bx declaration syntax seems to work.\n");
+    puts("PASS: All Bx declaration syntax works.\n");
     return (0);
 }

@@ -5,143 +5,127 @@ main() {
     auto passed = 0;
     auto total = 0;
 
-    printf("=== Escape Sequence Parser Tests ===\n");
+    printf("Escape sequence tests\n");
 
-    // Test 1: Basic escape sequences
-    printf("\n--- Testing Basic Escape Sequences ---\n");
+    printf("\nBasic escapes:\n");
     total++;
     sprintf(buffer, "newline:\n tab:\t backslash:\\ quote:\" apostrophe:'");
     if (buffer[8] == '\n' && buffer[14] == '\t' && buffer[26] == '\\' && buffer[34] == '"' && buffer[47] == '\'') {
-        printf("[PASS] Basic escape sequences work correctly\n");
+        printf("PASS: Basic escapes\n");
         passed++;
     } else {
-        printf("[FAIL] Basic escape sequences failed\n");
+        printf("FAIL: Basic escapes\n");
     }
 
-    // Test 2: Octal escape sequence \000 (NULL)
     total++;
     sprintf(buffer, "null:\000test");
     if (buffer[5] == 0) {
-        printf("[PASS] Octal \\000 (NULL) escape sequence works\n");
+        printf("PASS: Octal \\000 (NULL)\n");
         passed++;
     } else {
-        printf("[FAIL] Octal \\000 escape sequence failed\n");
+        printf("FAIL: Octal \\000\n");
     }
 
-    // Test 3: Octal escape sequence \033 (ESC for ANSI)
     total++;
     sprintf(buffer, "esc:\033test");
-    if (buffer[4] == 27) {  // ASCII 27 = ESC
-        printf("[PASS] Octal \\033 (ESC) escape sequence works\n");
+    if (buffer[4] == 27) {
+        printf("PASS: Octal \\033 (ESC)\n");
         passed++;
     } else {
-        printf("[FAIL] Octal \\033 escape sequence failed (got %d, expected 27)\n", buffer[4]);
+        printf("FAIL: Octal \\033 (got %d, expected 27)\n", buffer[4]);
     }
 
-    // Test 4: Octal escape sequence \101 (ASCII 'A')
     total++;
     sprintf(buffer, "A:\101test");
-    if (buffer[2] == 65) {  // ASCII 65 = 'A'
-        printf("[PASS] Octal \\101 (ASCII A) escape sequence works\n");
+    if (buffer[2] == 65) {
+        printf("PASS: Octal \\101 (ASCII A)\n");
         passed++;
     } else {
-        printf("[FAIL] Octal \\101 escape sequence failed (got %d, expected 65)\n", buffer[2]);
+        printf("FAIL: Octal \\101 (got %d, expected 65)\n", buffer[2]);
     }
 
-    // Test 5: Octal escape sequence \377 (max value 255)
-    // NOTE: This test currently fails due to UTF-8 encoding issues in string literals
-    // The value 255 gets UTF-8 encoded as bytes 195,191 instead of a single byte 255
     total++;
     sprintf(buffer, "max:\377test");
     if (buffer[4] == 255) {
-        printf("[PASS] Octal \\377 (255) escape sequence works\n");
+        printf("PASS: Octal \\377 (255)\n");
         passed++;
     } else {
-        printf("[FAIL] Octal \\377 escape sequence failed (got %d, expected 255) - UTF-8 encoding issue\n", buffer[4]);
+        printf("FAIL: Octal \\377 (got %d, expected 255) - UTF-8 issue\n", buffer[4]);
     }
 
-    // Test 6: Single digit octal \007 (BEL) - Go-style 3 digits
     total++;
     sprintf(buffer, "bel:\007test");
     if (buffer[4] == 7) {
-        printf("[PASS] Go-style octal \\007 (BEL) works\n");
+        printf("PASS: Go-style \\007 (BEL)\n");
         passed++;
     } else {
-        printf("[FAIL] Go-style octal \\007 failed (got %d, expected 7)\n", buffer[4]);
+        printf("FAIL: Go-style \\007 (got %d, expected 7)\n", buffer[4]);
     }
 
-    // Test 7: Two digit octal \012 (newline) - Go-style 3 digits
     total++;
     sprintf(buffer, "lf:\012test");
-    if (buffer[3] == 10) {  // ASCII 10 = LF
-        printf("[PASS] Go-style octal \\012 (LF) works\n");
+    if (buffer[3] == 10) {
+        printf("PASS: Go-style \\012 (LF)\n");
         passed++;
     } else {
-        printf("[FAIL] Go-style octal \\012 failed (got %d, expected 10)\n", buffer[3]);
+        printf("FAIL: Go-style \\012 (got %d, expected 10)\n", buffer[3]);
     }
 
-    // Test 8: ANSI color sequence (real world usage)
+    printf("\nANSI color:\n");
     total++;
-    printf("\n--- Testing ANSI Color Sequences ---\n");
     sprintf(buffer, "\033[31mRED\033[0m");
     if (buffer[0] == 27 && buffer[1] == '[' && buffer[2] == '3' && buffer[3] == '1' && buffer[4] == 'm') {
-        printf("[PASS] ANSI color sequence parsed correctly: ");
-        printf(buffer);  // This should display "RED" in red if terminal supports it
+        printf("PASS: ANSI color sequence: ");
+        printf(buffer);
         printf("\n");
         passed++;
     } else {
-        printf("[FAIL] ANSI color sequence failed\n");
+        printf("FAIL: ANSI color sequence\n");
     }
 
-    // Test 9: Mixed escape sequences
     total++;
     sprintf(buffer, "Line1\nLine2\t\033[32mGreen\033[0m\\\042End\042");
     if (buffer[5] == '\n' && buffer[11] == '\t' && buffer[12] == 27 && buffer[26] == '\\' && buffer[27] == '"') {
-        printf("[PASS] Mixed escape sequences work correctly\n");
+        printf("PASS: Mixed escapes\n");
         passed++;
     } else {
-        printf("[FAIL] Mixed escape sequences failed\n");
+        printf("FAIL: Mixed escapes\n");
     }
 
-    // Test 10: Character literals with octal escapes - Go-style
     total++;
     auto esc_char = '\033';
     auto null_char = '\000';
     if (esc_char == 27 && null_char == 0) {
-        printf("[PASS] Character literals with Go-style octal escapes work\n");
+        printf("PASS: Character literals with Go-style octal\n");
         passed++;
     } else {
-        printf("[FAIL] Character literals with Go-style octal escapes failed\n");
+        printf("FAIL: Character literals with Go-style octal\n");
     }
 
-    // Test 11: Go-style octal sequences (exactly 3 digits)
     total++;
-    sprintf(buffer, "a\000b\000c\000\060d");  // \000 = null, \060 = '0'
+    sprintf(buffer, "a\000b\000c\000\060d");
     if (buffer[1] == 0 && buffer[3] == 0 && buffer[5] == 0 && buffer[6] == '0') {
-        printf("[PASS] Go-style 3-digit octal sequences work\n");
+        printf("PASS: Go-style 3-digit octal\n");
         passed++;
     } else {
-        printf("[FAIL] Go-style 3-digit octal sequences failed\n");
+        printf("FAIL: Go-style 3-digit octal\n");
     }
 
-    // Test 12: Boundary octal values
     total++;
-    sprintf(buffer, "\001\010\077\100\177");  // 1, 8, 63, 64, 127
+    sprintf(buffer, "\001\010\077\100\177");
     if (buffer[0] == 1 && buffer[1] == 8 && buffer[2] == 63 && buffer[3] == 64 && buffer[4] == 127) {
-        printf("[PASS] Boundary octal values work correctly\n");
+        printf("PASS: Boundary octal values\n");
         passed++;
     } else {
-        printf("[FAIL] Boundary octal values failed\n");
+        printf("FAIL: Boundary octal values\n");
     }
 
-    // Final results
-    printf("\n=== Test Results ===\n");
-    printf("Passed: %d/%d tests\n", passed, total);
+    printf("\nResults: %d/%d tests passed\n", passed, total);
     if (passed == total) {
-        printf("All escape sequence tests PASSED!\n");
+        printf("All tests passed!\n");
         return (0);
     } else {
-        printf("Some tests FAILED. Parser may have issues.\n");
+        printf("Some tests failed.\n");
         return (1);
     }
 }

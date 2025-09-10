@@ -1,0 +1,78 @@
+extrn printf;
+
+type struct Point {
+    x int;
+    y int;
+};
+
+type enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+void testFunc(i int, f float) {
+    printf("param int: %s\n", typeof(i));
+    printf("param float: %s\n", typeof(f));
+}
+
+float returnFloat() {
+    return (2.5);
+}
+
+main() {
+    printf("Basic types:\n");
+    
+    int i = 42;
+    uint ui = 42;
+    float f = 3.14;
+    bool b = 1;
+    byte by = 65;
+    printf("int: %s, uint: %s, float: %s, bool: %s, byte: %s\n", 
+           typeof(i), typeof(ui), typeof(f), typeof(b), typeof(by));
+
+    printf("\nLiterals:\n");
+    printf("42: %s, 3.14: %s, \"hello\": %s\n", 
+           typeof(42), typeof(3.14), typeof("hello"));
+    
+    auto auto_int = 42;
+    auto auto_float = 3.14;
+    printf("auto int: %s, auto float: %s\n", typeof(auto_int), typeof(auto_float));
+
+    printf("\nPointers and arrays:\n");
+    auto ptr = &i;
+    int arr[3];
+    arr[0] = 10;
+    printf("int ptr: %s, array: %s, element: %s\n", 
+           typeof(ptr), typeof(arr), typeof(arr[0]));
+
+    printf("\nStructs and enums:\n");
+    Point p;
+    p.x = 10;
+    Color color = RED;
+    printf("struct: %s, member: %s, enum: %s\n", 
+           typeof(p), typeof(p.x), typeof(color));
+
+    printf("\nExpressions:\n");
+    printf("i + i: %s, f + f: %s, float(i) + f: %s\n", 
+           typeof(i + i), typeof(f + f), typeof(float(i) + f));
+    printf("i > 0: %s\n", typeof(i > 0));
+
+    printf("\nControl flow:\n");
+    if (i > 0) {
+        printf("in if: %s\n", typeof(i));
+    }
+    
+    auto counter = 0;
+    while (counter < 2) {
+        printf("in loop: %s\n", typeof(counter));
+        counter++;
+    }
+
+    printf("\nFunction calls:\n");
+    testFunc(42, 3.14);
+    auto ret = returnFloat();
+    printf("returned: %s\n", typeof(ret));
+
+    return(0);
+}

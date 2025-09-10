@@ -175,9 +175,7 @@ func (c *Config) SetTarget(hostOS, hostArch, targetFlag string) {
 	if targetFlag != "" {
 		parts := strings.SplitN(targetFlag, "/", 2)
 		c.BackendName = parts[0]
-		if len(parts) > 1 {
-			c.BackendTarget = parts[1]
-		}
+		if len(parts) > 1 { c.BackendTarget = parts[1] }
 	}
 
 	validQBETargets := map[string]string{
