@@ -28,7 +28,9 @@ func NewParser(tokens []token.Token, cfg *config.Config) *Parser {
 		isTypedPass: cfg.IsFeatureEnabled(config.FeatTyped),
 		typeNames:   make(map[string]bool),
 	}
-	if len(tokens) > 0 { p.current = p.tokens[0] }
+	if len(tokens) > 0 {
+		p.current = p.tokens[0]
+	}
 
 	if p.isTypedPass {
 		for keyword, tokType := range token.KeywordMap {
@@ -44,12 +46,16 @@ func (p *Parser) advance() {
 	if p.pos < len(p.tokens) {
 		p.previous = p.current
 		p.pos++
-		if p.pos < len(p.tokens) { p.current = p.tokens[p.pos] }
+		if p.pos < len(p.tokens) {
+			p.current = p.tokens[p.pos]
+		}
 	}
 }
 
 func (p *Parser) peek() token.Token {
-	if p.pos+1 < len(p.tokens) { return p.tokens[p.pos+1] }
+	if p.pos+1 < len(p.tokens) {
+		return p.tokens[p.pos+1]
+	}
 	return p.tokens[len(p.tokens)-1]
 }
 
@@ -82,10 +88,8 @@ func (p *Parser) isTypeName(name string) bool {
 func isLValue(node *ast.Node) bool {
 	if node == nil { return false }
 	switch node.Type {
-	case ast.Ident, ast.Indirection, ast.Subscript, ast.MemberAccess:
-		return true
-	default:
-		return false
+	case ast.Ident, ast.Indirection, ast.Subscript, ast.MemberAccess: return true
+	default: return false
 	}
 }
 
@@ -93,8 +97,7 @@ func (p *Parser) Parse() *ast.Node {
 	var stmts []*ast.Node
 	tok := p.current
 	for !p.check(token.EOF) {
-		for p.match(token.Semi) {
-		}
+		for p.match(token.Semi) {}
 		if p.check(token.EOF) { break }
 
 		stmt := p.parseTopLevel()
@@ -126,12 +129,8 @@ func (p *Parser) parseTopLevel() *ast.Node {
 		}
 		stmt = ast.NewDirective(currentTok, directiveVal)
 		p.advance()
-	case token.TypeKeyword:
-		p.advance()
-		stmt = p.parseTypeDecl()
-	case token.Extrn:
-		p.advance()
-		stmt = p.parseUntypedDeclarationList(token.Extrn, currentTok)
+	case token.TypeKeyword: p.advance(); stmt = p.parseTypeDecl()
+	case token.Extrn: p.advance(); stmt = p.parseUntypedDeclarationList(token.Extrn, currentTok)
 	case token.Auto:
 		if p.isBxDeclarationAhead() {
 			stmt = p.parseDeclaration(true)
@@ -149,6 +148,21 @@ func (p *Parser) parseTopLevel() *ast.Node {
 		} else if peekTok.Type == token.Asm {
 			p.advance()
 			stmt = p.parseAsmFuncDef(identTok)
+		} else if peekTok.Type == token.Extrn {
+			// Handle typed external declaration: type_name extrn function_name;
+			if p.isTypedPass && p.isTypeName(identTok.Value) {
+				returnType := p.typeFromName(identTok.Value)
+				if returnType != nil {
+					p.advance() // consume type name
+					p.advance() // consume 'extrn'
+					stmt = p.parseTypedExtrnDecl(identTok, returnType)
+				} else {
+					// Fallback to regular parsing if type not found
+					stmt = p.parseUntypedGlobalDefinition(identTok)
+				}
+			} else {
+				stmt = p.parseUntypedGlobalDefinition(identTok)
+			}
 		} else if p.isTypedPass && p.isTypeName(identTok.Value) && peekTok.Type != token.Define {
 			stmt = p.parseTypedVarOrFuncDecl(true)
 		} else if p.isBxDeclarationAhead() {
@@ -177,21 +191,62 @@ func (p *Parser) isBxDeclarationAhead() bool {
 	defer func() { p.pos, p.current = originalPos, originalCurrent }()
 
 	hasAuto := p.match(token.Auto)
-	if !p.check(token.Ident) { return false }
+	if !p.check(token.Ident) {
+		return false
+	}
 	p.advance()
 
 	for p.match(token.Comma) {
-		if !p.check(token.Ident) { return false }
+		if !p.check(token.Ident) {
+			return false
+		}
 		p.advance()
 	}
 
-	if p.check(token.Define) { return true }
-	if p.check(token.Eq) { return hasAuto }
+	if p.check(token.Define) {
+		return true
+	}
+	if p.check(token.Eq) {
+		return hasAuto
+	}
 	return false
 }
 
 func (p *Parser) isBuiltinType(tok token.Token) bool {
 	return tok.Type >= token.Void && tok.Type <= token.Any
+}
+
+// isPointerCastAhead checks if the current position looks like a pointer cast: (type*)
+// This allows complex pointer casts while disallowing simple scalar C-style casts
+func (p *Parser) isPointerCastAhead() bool {
+	if !p.isTypedPass { return false }
+
+	originalPos, originalCurrent := p.pos, p.current
+	defer func() { p.pos, p.current = originalPos, originalCurrent }()
+
+	if p.match(token.Const) {}
+
+	if p.isBuiltinType(p.current) {
+		p.advance()
+	} else if p.check(token.Ident) && p.isTypeName(p.current.Value) {
+		p.advance()
+	} else {
+		return false
+	}
+
+	hasPointer := false
+	if p.match(token.Star) {
+		hasPointer = true
+		for p.match(token.Star) {}
+	}
+
+	if p.match(token.LBracket) {
+		hasPointer = true
+		for !p.check(token.RBracket) && !p.check(token.EOF) { p.advance() }
+		if p.check(token.RBracket) { p.advance() }
+	}
+
+	return hasPointer && p.check(token.RParen)
 }
 
 func (p *Parser) parseStmt() *ast.Node {
@@ -228,7 +283,9 @@ func (p *Parser) parseStmt() *ast.Node {
 		p.expect(token.RParen, "Expected ')' after if condition")
 		thenBody := p.parseStmt()
 		var elseBody *ast.Node
-		if p.match(token.Else) { elseBody = p.parseStmt() }
+		if p.match(token.Else) {
+			elseBody = p.parseStmt()
+		}
 		return ast.NewIf(tok, cond, thenBody, elseBody)
 	case p.match(token.While):
 		p.expect(token.LParen, "Expected '(' after 'while'")
@@ -239,13 +296,17 @@ func (p *Parser) parseStmt() *ast.Node {
 	case p.match(token.Switch):
 		hasParen := p.match(token.LParen)
 		expr := p.parseExpr()
-		if hasParen { p.expect(token.RParen, "Expected ')' after switch expression") }
+		if hasParen {
+			p.expect(token.RParen, "Expected ')' after switch expression")
+		}
 		body := p.parseStmt()
 		return ast.NewSwitch(tok, expr, body)
 	case p.check(token.LBrace):
 		return p.parseBlockStmt()
 	case p.check(token.Auto):
-		if p.isBxDeclarationAhead() { return p.parseDeclaration(true) }
+		if p.isBxDeclarationAhead() {
+			return p.parseDeclaration(true)
+		}
 		p.advance()
 		return p.parseUntypedDeclarationList(token.Auto, p.previous)
 	case p.match(token.Extrn):
@@ -254,7 +315,9 @@ func (p *Parser) parseStmt() *ast.Node {
 		var values []*ast.Node
 		for {
 			values = append(values, p.parseExpr())
-			if !p.match(token.Comma) { break }
+			if !p.match(token.Comma) {
+				break
+			}
 		}
 		p.expect(token.Colon, "Expected ':' after case value")
 		body := p.parseStmt()
@@ -278,7 +341,9 @@ func (p *Parser) parseStmt() *ast.Node {
 			}
 			if !isKeyword {
 				util.Error(p.current, "Expected label name after 'goto'")
-				for !p.check(token.Semi) && !p.check(token.EOF) { p.advance() }
+				for !p.check(token.Semi) && !p.check(token.EOF) {
+					p.advance()
+				}
 			} else {
 				if labelName == "continue" {
 					util.Warn(p.cfg, config.WarnExtra, p.current, "'goto continue' is a workaround for a limitation of -std=B; please avoid this construct")
@@ -293,7 +358,9 @@ func (p *Parser) parseStmt() *ast.Node {
 		var expr *ast.Node
 		if !p.check(token.Semi) {
 			p.expect(token.LParen, "Expected '(' after 'return' with value")
-			if !p.check(token.RParen) { expr = p.parseExpr() }
+			if !p.check(token.RParen) {
+				expr = p.parseExpr()
+			}
 			p.expect(token.RParen, "Expected ')' after return value")
 		}
 		p.expect(token.Semi, "Expected ';' after return statement")
@@ -307,24 +374,31 @@ func (p *Parser) parseStmt() *ast.Node {
 		}
 		p.expect(token.Semi, "Expected ';' after 'continue'")
 		return ast.NewContinue(tok)
-	case p.match(token.Semi):
-		return ast.NewBlock(tok, nil, true)
+	case p.match(token.Semi): return ast.NewBlock(tok, nil, true)
 	default:
 		if p.check(token.Ident) {
 			isShortDecl := false
 			originalPos, originalCurrent := p.pos, p.current
 			p.advance()
 			for p.match(token.Comma) {
-				if !p.check(token.Ident) { break }
+				if !p.check(token.Ident) {
+					break
+				}
 				p.advance()
 			}
-			if p.check(token.Define) { isShortDecl = true }
+			if p.check(token.Define) {
+				isShortDecl = true
+			}
 			p.pos, p.current = originalPos, originalCurrent
-			if isShortDecl { return p.parseDeclaration(false) }
+			if isShortDecl {
+				return p.parseDeclaration(false)
+			}
 		}
 
 		expr := p.parseExpr()
-		if expr != nil { p.expect(token.Semi, "Expected ';' after expression statement") }
+		if expr != nil {
+			p.expect(token.Semi, "Expected ';' after expression statement")
+		}
 		return expr
 	}
 }
@@ -358,7 +432,9 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 	for {
 		p.expect(token.Ident, "Expected identifier in declaration")
 		names = append(names, ast.NewIdent(p.previous, p.previous.Value))
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 
 	var op token.Type
@@ -374,7 +450,9 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 	if op != 0 {
 		for {
 			inits = append(inits, p.parseAssignmentExpr())
-			if !p.match(token.Comma) { break }
+			if !p.match(token.Comma) {
+				break
+			}
 		}
 		if len(names) != len(inits) {
 			util.Error(declTok, "Mismatched number of variables and initializers (%d vs %d)", len(names), len(inits))
@@ -386,14 +464,18 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 	var decls []*ast.Node
 	for i, nameNode := range names {
 		var initList []*ast.Node
-		if i < len(inits) { initList = append(initList, inits[i]) }
+		if i < len(inits) {
+			initList = append(initList, inits[i])
+		}
 		name := nameNode.Data.(ast.IdentNode).Name
 		decls = append(decls, ast.NewVarDecl(nameNode.Tok, name, ast.TypeUntyped, initList, nil, false, false, isDefine))
 	}
 
 	p.expect(token.Semi, "Expected ';' after declaration")
 
-	if len(decls) == 1 { return decls[0] }
+	if len(decls) == 1 {
+		return decls[0]
+	}
 	return ast.NewMultiVarDecl(declTok, decls)
 }
 
@@ -403,10 +485,12 @@ func (p *Parser) parseUntypedDeclarationList(declType token.Type, declTok token.
 		for {
 			p.expect(token.Ident, "Expected identifier in 'extrn' list")
 			names = append(names, ast.NewIdent(p.previous, p.previous.Value))
-			if !p.match(token.Comma) { break }
+			if !p.match(token.Comma) {
+				break
+			}
 		}
 		p.expect(token.Semi, "Expected ';' after 'extrn' declaration")
-		return ast.NewExtrnDecl(declTok, names)
+		return ast.NewExtrnDecl(declTok, names, nil)
 	}
 
 	var decls []*ast.Node
@@ -437,7 +521,9 @@ func (p *Parser) parseUntypedDeclarationList(declType token.Type, declTok token.
 				util.Error(p.previous, "Classic B 'auto' vectors use 'auto name size', not 'auto name[size]'")
 			}
 			isVector, isBracketed = true, true
-			if !p.check(token.RBracket) { sizeExpr = p.parseExpr() }
+			if !p.check(token.RBracket) {
+				sizeExpr = p.parseExpr()
+			}
 			p.expect(token.RBracket, "Expected ']' after array size")
 		} else if p.check(token.Number) {
 			isVector = true
@@ -449,17 +535,23 @@ func (p *Parser) parseUntypedDeclarationList(declType token.Type, declTok token.
 		}
 
 		decls = append(decls, ast.NewVarDecl(itemToken, name, nil, nil, sizeExpr, isVector, isBracketed, false))
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 	p.expect(token.Semi, "Expected ';' after declaration list")
 
-	if len(decls) == 1 { return decls[0] }
+	if len(decls) == 1 {
+		return decls[0]
+	}
 	return ast.NewMultiVarDecl(declTok, decls)
 }
 
 func (p *Parser) parseUntypedGlobalDefinition(nameToken token.Token) *ast.Node {
 	name := nameToken.Value
-	if p.isTypeName(name) { util.Error(nameToken, "Variable name '%s' shadows a type", name) }
+	if p.isTypeName(name) {
+		util.Error(nameToken, "Variable name '%s' shadows a type", name)
+	}
 	p.advance()
 
 	var sizeExpr *ast.Node
@@ -467,19 +559,30 @@ func (p *Parser) parseUntypedGlobalDefinition(nameToken token.Token) *ast.Node {
 
 	if p.match(token.LBracket) {
 		isVector, isBracketed = true, true
-		if !p.check(token.RBracket) { sizeExpr = p.parseExpr() }
+		if !p.check(token.RBracket) {
+			sizeExpr = p.parseExpr()
+		}
 		p.expect(token.RBracket, "Expected ']' for vector definition")
 	}
 
 	var initList []*ast.Node
 	if !p.check(token.Semi) {
+		// Check if this is an attempt to assign without declaration
+		if p.check(token.Eq) {
+			util.Error(nameToken, "Assignment without declaration is not allowed at global scope. Use ':=' or make it a typed declaration and initialization")
+			return nil
+		}
 		initList = append(initList, p.parseUnaryExpr())
 		if isBracketed || p.match(token.Comma) || (!p.check(token.Semi) && !p.check(token.EOF)) {
 			isVector = true
-			if p.previous.Type != token.Comma { p.match(token.Comma) }
+			if p.previous.Type != token.Comma {
+				p.match(token.Comma)
+			}
 			for !p.check(token.Semi) && !p.check(token.EOF) {
 				initList = append(initList, p.parseUnaryExpr())
-				if p.check(token.Semi) || p.check(token.EOF) { break }
+				if p.check(token.Semi) || p.check(token.EOF) {
+					break
+				}
 				p.match(token.Comma)
 			}
 		}
@@ -495,7 +598,9 @@ func (p *Parser) parseUntypedGlobalDefinition(nameToken token.Token) *ast.Node {
 
 func (p *Parser) parseFuncDecl(returnType *ast.BxType, nameToken token.Token) *ast.Node {
 	name := nameToken.Value
-	if p.isTypeName(name) { util.Error(nameToken, "Function name '%s' shadows a type", name) }
+	if p.isTypeName(name) {
+		util.Error(nameToken, "Function name '%s' shadows a type", name)
+	}
 	p.expect(token.LParen, "Expected '(' after function name")
 
 	var params []*ast.Node
@@ -543,7 +648,9 @@ func (p *Parser) parseFuncDecl(returnType *ast.BxType, nameToken token.Token) *a
 
 	if returnType == nil {
 		returnType = ast.TypeUntyped
-		if isTyped { returnType = ast.TypeInt }
+		if isTyped {
+			returnType = ast.TypeInt
+		}
 	}
 
 	return ast.NewFuncDecl(nameToken, name, params, body, hasVarargs, isTyped, returnType)
@@ -551,7 +658,9 @@ func (p *Parser) parseFuncDecl(returnType *ast.BxType, nameToken token.Token) *a
 
 func (p *Parser) parseAsmFuncDef(nameToken token.Token) *ast.Node {
 	name := nameToken.Value
-	if p.isTypeName(name) { util.Error(nameToken, "Function name '%s' shadows a type", name) }
+	if p.isTypeName(name) {
+		util.Error(nameToken, "Function name '%s' shadows a type", name)
+	}
 
 	p.expect(token.Asm, "Expected '__asm__' keyword")
 	asmTok := p.previous
@@ -579,7 +688,9 @@ func (p *Parser) parseAsmFuncDef(nameToken token.Token) *ast.Node {
 func (p *Parser) parseTypeDecl() *ast.Node {
 	typeTok := p.previous
 
-	if p.match(token.Enum) { return p.parseEnumDef(typeTok) }
+	if p.match(token.Enum) {
+		return p.parseEnumDef(typeTok)
+	}
 
 	if p.match(token.Struct) {
 		underlyingType := p.parseStructDef()
@@ -602,9 +713,27 @@ func (p *Parser) parseTypeDecl() *ast.Node {
 		return ast.NewTypeDecl(typeTok, name, underlyingType)
 	}
 
-	util.Error(typeTok, "Expected 'struct' or 'enum' after 'type'")
-	p.advance()
-	return nil
+	// Handle type alias: type <underlying_type> <new_name>;
+	underlyingType := p.parseType()
+	if underlyingType == nil {
+		util.Error(p.current, "Expected a type for type alias after 'type'")
+		for !p.check(token.Semi) && !p.check(token.EOF) {
+			p.advance()
+		}
+		return nil
+	}
+
+	p.expect(token.Ident, "Expected new type name for alias")
+	nameToken := p.previous
+	name := nameToken.Value
+
+	if p.isTypeName(name) {
+		util.Error(nameToken, "Redefinition of type '%s'", name)
+	}
+	p.typeNames[name] = true
+
+	p.expect(token.Semi, "Expected ';' after type alias declaration")
+	return ast.NewTypeDecl(typeTok, name, underlyingType)
 }
 
 func (p *Parser) parseEnumDef(typeTok token.Token) *ast.Node {
@@ -640,7 +769,9 @@ func (p *Parser) parseEnumDef(typeTok token.Token) *ast.Node {
 
 		currentValue++
 
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 
 	p.expect(token.RBrace, "Expected '}' to close enum definition")
@@ -658,10 +789,17 @@ func (p *Parser) parseTypedVarOrFuncDecl(isTopLevel bool) *ast.Node {
 		return p.parseTypedVarDeclBody(startTok, declType, p.previous)
 	}
 
+	// Check for typed external declaration: type extrn function_name;
+	if p.match(token.Extrn) {
+		return p.parseTypedExtrnDecl(startTok, declType)
+	}
+
 	p.expect(token.Ident, "Expected identifier after type")
 	nameToken := p.previous
 
-	if p.check(token.LParen) { return p.parseFuncDecl(declType, nameToken) }
+	if p.check(token.LParen) {
+		return p.parseFuncDecl(declType, nameToken)
+	}
 
 	return p.parseTypedVarDeclBody(startTok, declType, nameToken)
 }
@@ -678,7 +816,9 @@ func (p *Parser) parseTypedVarDeclBody(startTok token.Token, declType *ast.BxTyp
 
 		if p.match(token.LBracket) {
 			isArr, isBracketed = true, true
-			if !p.check(token.RBracket) { sizeExpr = p.parseExpr() }
+			if !p.check(token.RBracket) {
+				sizeExpr = p.parseExpr()
+			}
 			p.expect(token.RBracket, "Expected ']' after array size")
 			finalType = &ast.BxType{Kind: ast.TYPE_ARRAY, Base: declType, ArraySize: sizeExpr, IsConst: declType.IsConst}
 		}
@@ -692,7 +832,9 @@ func (p *Parser) parseTypedVarDeclBody(startTok token.Token, declType *ast.BxTyp
 
 		decls = append(decls, ast.NewVarDecl(currentNameToken, name, finalType, initList, sizeExpr, isArr, isBracketed, false))
 
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 
 		p.expect(token.Ident, "Expected identifier after comma in declaration list")
 		currentNameToken = p.previous
@@ -700,12 +842,16 @@ func (p *Parser) parseTypedVarDeclBody(startTok token.Token, declType *ast.BxTyp
 
 	p.expect(token.Semi, "Expected ';' after typed variable declaration")
 
-	if len(decls) == 1 { return decls[0] }
+	if len(decls) == 1 {
+		return decls[0]
+	}
 	return ast.NewMultiVarDecl(startTok, decls)
 }
 
 func (p *Parser) parseType() *ast.BxType {
-	if !p.isTypedPass { return nil }
+	if !p.isTypedPass {
+		return nil
+	}
 
 	isConst := p.match(token.Const)
 	var baseType *ast.BxType
@@ -789,7 +935,9 @@ func (p *Parser) parseStructDef() *ast.BxType {
 
 	if p.check(token.Ident) {
 		structType.StructTag = p.current.Value
-		if p.isTypedPass { p.typeNames[structType.StructTag] = true }
+		if p.isTypedPass {
+			p.typeNames[structType.StructTag] = true
+		}
 		p.advance()
 	}
 
@@ -821,7 +969,9 @@ func (p *Parser) parseStructDef() *ast.BxType {
 	}
 
 	p.expect(token.RBrace, "Expected '}' to close struct definition")
-	if structType.StructTag != "" { structType.Name = structType.StructTag }
+	if structType.StructTag != "" {
+		structType.Name = structType.StructTag
+	}
 	return structType
 }
 
@@ -829,14 +979,24 @@ func (p *Parser) isTypedParameterList() bool {
 	originalPos, originalCurrent := p.pos, p.current
 	defer func() { p.pos, p.current = originalPos, originalCurrent }()
 
-	if p.check(token.RParen) { return false }
-	if p.check(token.Void) && p.peek().Type == token.RParen { return true }
-	if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) { return true }
+	if p.check(token.RParen) {
+		return false
+	}
+	if p.check(token.Void) && p.peek().Type == token.RParen {
+		return true
+	}
+	if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) {
+		return true
+	}
 
 	for {
-		if !p.check(token.Ident) { return false }
+		if !p.check(token.Ident) {
+			return false
+		}
 		p.advance()
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 	return p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) || p.check(token.LBracket) || p.check(token.Star)
 }
@@ -852,7 +1012,9 @@ func (p *Parser) parseUntypedParameters() ([]*ast.Node, bool) {
 			}
 			p.expect(token.Ident, "Expected parameter name or '...'")
 			params = append(params, ast.NewIdent(p.previous, p.previous.Value))
-			if !p.match(token.Comma) { break }
+			if !p.match(token.Comma) {
+				break
+			}
 		}
 	}
 	return params, hasVarargs
@@ -861,14 +1023,18 @@ func (p *Parser) parseUntypedParameters() ([]*ast.Node, bool) {
 func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 	var params []*ast.Node
 	var hasVarargs bool
-	if p.check(token.RParen) { return params, false }
+	if p.check(token.RParen) {
+		return params, false
+	}
 	if p.check(token.Void) && p.peek().Type == token.RParen {
 		p.advance()
 		return params, false
 	}
 
 	for {
-		if p.check(token.RParen) { break }
+		if p.check(token.RParen) {
+			break
+		}
 		if p.match(token.Dots) {
 			hasVarargs = true
 			break
@@ -900,7 +1066,9 @@ func (p *Parser) parseTypedParameters() ([]*ast.Node, bool) {
 			}
 		}
 
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 	return params, hasVarargs
 }
@@ -917,16 +1085,73 @@ func getBinaryOpPrecedence(op token.Type) int {
 	case token.Shl, token.Shr: return 11
 	case token.Plus, token.Minus: return 12
 	case token.Star, token.Slash, token.Rem: return 13
-	default: return -1
+	default:
+		return -1
 	}
 }
 
 func (p *Parser) parseExpr() *ast.Node { return p.parseAssignmentExpr() }
 
 func (p *Parser) parseAssignmentExpr() *ast.Node {
+	// Try to detect multi-assignment pattern: lhs1, lhs2, ... = rhs1, rhs2, ...
+	startPos := p.pos
+	startCurrent := p.current
+	
+	// Parse first expression
 	left := p.parseTernaryExpr()
+	
+	// Check if this could be a multi-assignment (comma followed by more expressions then equals)
+	if p.check(token.Comma) {
+		var lhsList []*ast.Node
+		lhsList = append(lhsList, left)
+		
+		// Parse comma-separated lvalues
+		for p.match(token.Comma) {
+			expr := p.parseTernaryExpr()
+			lhsList = append(lhsList, expr)
+		}
+		
+		// Check if we have an assignment operator
+		if op := p.current.Type; op >= token.Eq && op <= token.EqShr {
+			// Validate all lhs expressions are lvalues
+			for _, lhs := range lhsList {
+				if !isLValue(lhs) {
+					util.Error(p.current, "Invalid target for assignment")
+				}
+			}
+			
+			tok := p.current
+			p.advance()
+			
+			// Parse comma-separated rvalues
+			var rhsList []*ast.Node
+			for {
+				rhs := p.parseAssignmentExpr()
+				rhsList = append(rhsList, rhs)
+				if !p.match(token.Comma) {
+					break
+				}
+			}
+			
+			// Check that number of lhs and rhs match
+			if len(lhsList) != len(rhsList) {
+				util.Error(tok, "Mismatched number of variables and values in assignment (%d vs %d)", len(lhsList), len(rhsList))
+			}
+			
+			return ast.NewMultiAssign(tok, op, lhsList, rhsList)
+		}
+		
+		// Not a multi-assignment, backtrack and treat as comma expression
+		p.pos = startPos
+		p.current = startCurrent
+		left = p.parseTernaryExpr()
+	}
+	
+	// Regular single assignment
 	if op := p.current.Type; op >= token.Eq && op <= token.EqShr {
-		if !isLValue(left) { util.Error(p.current, "Invalid target for assignment") }
+		if !isLValue(left) {
+			util.Error(p.current, "Invalid target for assignment")
+		}
 		tok := p.current
 		p.advance()
 		right := p.parseAssignmentExpr()
@@ -950,10 +1175,14 @@ func (p *Parser) parseTernaryExpr() *ast.Node {
 func (p *Parser) parseBinaryExpr(minPrec int) *ast.Node {
 	left := p.parseUnaryExpr()
 	for {
-		if left == nil { return nil }
+		if left == nil {
+			return nil
+		}
 		op := p.current.Type
 		prec := getBinaryOpPrecedence(op)
-		if prec < minPrec { break }
+		if prec < minPrec {
+			break
+		}
 		opTok := p.current
 		p.advance()
 		right := p.parseBinaryExpr(prec + 1)
@@ -968,9 +1197,13 @@ func (p *Parser) parseUnaryExpr() *ast.Node {
 		op, opToken := p.previous.Type, p.previous
 		operand := p.parseUnaryExpr()
 
-		if op == token.Star { return ast.NewIndirection(tok, operand) }
+		if op == token.Star {
+			return ast.NewIndirection(tok, operand)
+		}
 		if op == token.And {
-			if !isLValue(operand) { util.Error(opToken, "Address-of operator '&' requires an l-value") }
+			if !isLValue(operand) {
+				util.Error(opToken, "Address-of operator '&' requires an l-value")
+			}
 			return ast.NewAddressOf(tok, operand)
 		}
 		if (op == token.Inc || op == token.Dec) && !isLValue(operand) {
@@ -984,14 +1217,18 @@ func (p *Parser) parseUnaryExpr() *ast.Node {
 func (p *Parser) parsePostfixExpr() *ast.Node {
 	expr := p.parsePrimaryExpr()
 	for {
-		if expr == nil { return nil }
+		if expr == nil {
+			return nil
+		}
 		tok := p.current
 		if p.match(token.LParen) {
 			var args []*ast.Node
 			if !p.check(token.RParen) {
 				for {
 					args = append(args, p.parseAssignmentExpr())
-					if !p.match(token.Comma) { break }
+					if !p.match(token.Comma) {
+						break
+					}
 				}
 			}
 			p.expect(token.RParen, "Expected ')' after function arguments")
@@ -1005,7 +1242,9 @@ func (p *Parser) parsePostfixExpr() *ast.Node {
 			member := ast.NewIdent(p.previous, p.previous.Value)
 			expr = ast.NewMemberAccess(tok, expr, member)
 		} else if p.match(token.Inc, token.Dec) {
-			if !isLValue(expr) { util.Error(p.previous, "Postfix '++' or '--' requires an l-value") }
+			if !isLValue(expr) {
+				util.Error(p.previous, "Postfix '++' or '--' requires an l-value")
+			}
 			expr = ast.NewPostfixOp(p.previous, p.previous.Type, expr)
 		} else {
 			break
@@ -1025,26 +1264,50 @@ func (p *Parser) parseStructLiteral(typeNode *ast.Node) *ast.Node {
 	for !p.check(token.RBrace) && !p.check(token.EOF) {
 		if p.check(token.Ident) && p.peek().Type == token.Colon {
 			hasNames = true
-			if hasPositional { util.Error(p.current, "Cannot mix named and positional fields in struct literal") }
+			if hasPositional {
+				util.Error(p.current, "Cannot mix named and positional fields in struct literal")
+			}
 			p.expect(token.Ident, "Expected field name")
 			names = append(names, ast.NewIdent(p.previous, p.previous.Value))
 			p.expect(token.Colon, "Expected ':' after field name")
 			values = append(values, p.parseAssignmentExpr())
 		} else {
 			hasPositional = true
-			if hasNames { util.Error(p.current, "Cannot mix named and positional fields in struct literal") }
+			if hasNames {
+				util.Error(p.current, "Cannot mix named and positional fields in struct literal")
+			}
 			names = append(names, nil)
 			values = append(values, p.parseAssignmentExpr())
 		}
 
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 
 	p.expect(token.RBrace, "Expected '}' to close struct literal")
 
-	if hasPositional && !hasNames { names = nil }
+	if hasPositional && !hasNames {
+		names = nil
+	}
 
 	return ast.NewStructLiteral(startTok, typeNode, values, names)
+}
+
+func (p *Parser) parseArrayLiteral(startTok token.Token, elemType *ast.BxType) *ast.Node {
+	p.expect(token.LBrace, "Expected '{' for array literal")
+
+	var values []*ast.Node
+	for !p.check(token.RBrace) && !p.check(token.EOF) {
+		values = append(values, p.parseAssignmentExpr())
+		if !p.match(token.Comma) {
+			break
+		}
+	}
+
+	p.expect(token.RBrace, "Expected '}' to close array literal")
+
+	return ast.NewArrayLiteral(startTok, elemType, values)
 }
 
 func (p *Parser) parsePrimaryExpr() *ast.Node {
@@ -1054,7 +1317,9 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 		val, err := strconv.ParseInt(valStr, 0, 64)
 		if err != nil {
 			uval, uerr := strconv.ParseUint(valStr, 0, 64)
-			if uerr != nil { util.Error(tok, "Invalid integer literal: %s", valStr) }
+			if uerr != nil {
+				util.Error(tok, "Invalid integer literal: %s", valStr)
+			}
 			val = int64(uval)
 		}
 		return ast.NewNumber(tok, val)
@@ -1063,8 +1328,12 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 		val, _ := strconv.ParseFloat(p.previous.Value, 64)
 		return ast.NewFloatNumber(tok, val)
 	}
-	if p.match(token.String) { return ast.NewString(tok, p.previous.Value) }
-	if p.match(token.Nil) { return ast.NewNil(tok) }
+	if p.match(token.String) {
+		return ast.NewString(tok, p.previous.Value)
+	}
+	if p.match(token.Nil) {
+		return ast.NewNil(tok)
+	}
 	if p.match(token.Null) {
 		util.Warn(p.cfg, config.WarnExtra, tok, "Use of 'null' is discouraged, prefer 'nil' for idiomatic Bx code")
 		return ast.NewNil(tok)
@@ -1088,8 +1357,15 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 		util.Warn(p.cfg, config.WarnExtra, p.previous, "Using keyword 'type' as an identifier")
 		return ast.NewIdent(tok, "type")
 	}
+	if p.match(token.TypeOf) {
+		p.expect(token.LParen, "Expected '(' after 'typeof'")
+		expr := p.parseExpr()
+		p.expect(token.RParen, "Expected ')' after typeof expression")
+		return ast.NewTypeOf(tok, expr)
+	}
 	if p.match(token.LParen) {
-		if p.isTypedPass && (p.isBuiltinType(p.current) || p.isTypeName(p.current.Value)) {
+		// Only allow C-style casts for pointer types, not simple scalar types
+		if p.isTypedPass && p.isPointerCastAhead() {
 			castType := p.parseType()
 			p.expect(token.RParen, "Expected ')' after type in cast")
 			exprToCast := p.parseUnaryExpr()
@@ -1111,8 +1387,60 @@ func (p *Parser) parsePrimaryExpr() *ast.Node {
 		p.current = p.previous
 	}
 
+	// Handle array literals: []type{ ... }
+	if p.isTypedPass && p.match(token.LBracket) {
+		arrayTok := p.previous
+		p.expect(token.RBracket, "Expected ']' for array literal")
+		if p.isBuiltinType(p.current) || p.isTypeName(p.current.Value) || p.check(token.Star) {
+			elemType := p.parseType()
+			if elemType != nil && p.check(token.LBrace) {
+				return p.parseArrayLiteral(arrayTok, elemType)
+			}
+		}
+		// Not an array literal, backtrack
+		util.Error(arrayTok, "Expected type after '[]' for array literal")
+		return nil
+	}
+
 	if !p.check(token.EOF) && !p.check(token.RBrace) && !p.check(token.Semi) {
 		util.Error(tok, "Expected an expression")
 	}
 	return nil
+}
+
+// typeFromName converts a type name string to a BxType
+func (p *Parser) typeFromName(name string) *ast.BxType {
+	// Check if it's a built-in type keyword
+	if tokType, isKeyword := token.KeywordMap[name]; isKeyword {
+		if tokType == token.Void {
+			return ast.TypeVoid
+		} else if tokType == token.StringKeyword {
+			return ast.TypeString
+		} else if tokType >= token.Float && tokType <= token.Float64 {
+			return &ast.BxType{Kind: ast.TYPE_FLOAT, Name: name}
+		} else if tokType >= token.Byte && tokType <= token.Any {
+			return &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: name}
+		}
+	}
+
+	// Check if it's a user-defined type name
+	if p.isTypeName(name) {
+		return &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: name}
+	}
+
+	return nil
+}
+
+// parseTypedExtrnDecl parses typed external function declarations like "tm extrn localtime;"
+func (p *Parser) parseTypedExtrnDecl(typeTok token.Token, returnType *ast.BxType) *ast.Node {
+	var names []*ast.Node
+	for {
+		p.expect(token.Ident, "Expected identifier in typed 'extrn' declaration")
+		names = append(names, ast.NewIdent(p.previous, p.previous.Value))
+		if !p.match(token.Comma) {
+			break
+		}
+	}
+	p.expect(token.Semi, "Expected ';' after typed 'extrn' declaration")
+	return ast.NewExtrnDecl(typeTok, names, returnType)
 }

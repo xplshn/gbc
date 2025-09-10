@@ -20,10 +20,7 @@ const (
 	formatItalic  = "\033[3m"
 )
 
-type SourceFileRecord struct {
-	Name    string
-	Content []rune
-}
+type SourceFileRecord struct { Name string; Content []rune }
 
 var sourceFiles []SourceFileRecord
 

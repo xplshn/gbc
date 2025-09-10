@@ -1,0 +1,77 @@
+// Tests for typeof in control flow contexts (if, switch/case)
+extrn printf;
+
+void testIf() {
+    printf("=== If Statement Context ===\n");
+    
+    auto x = 42;
+    auto y = 3.14;
+    
+    if (x > 0) {
+        printf("x is positive: %s\n", typeof(x));
+        
+        if (y > 3.0) {
+            printf("y is > 3.0: %s\n", typeof(y));
+        }
+    }
+    
+    // Test typeof in condition expressions
+    auto condition_int = 1;
+    auto condition_float = 0.0;
+    
+    if (condition_int) {
+        printf("condition int: %s\n", typeof(condition_int));
+    }
+    
+    if (!condition_float) {
+        printf("condition float: %s\n", typeof(condition_float));
+    }
+}
+
+void testSwitch() {
+    printf("\n=== Switch/Case Context ===\n");
+    
+    auto value = 2;
+    printf("switch value: %s\n", typeof(value));
+    
+    switch (value) {
+        case 1:
+            printf("case 1: %s\n", typeof(value));
+            break;
+        case 2:
+            printf("case 2: %s\n", typeof(value));
+            break;
+        default:
+            printf("default: %s\n", typeof(value));
+            break;
+    }
+    
+    // Test with different types
+    auto float_value = 1.5;
+    printf("float switch value: %s\n", typeof(float_value));
+    
+    // Note: Bx may not support float in switch, but we can test the type
+    if (float_value > 1.0) {
+        printf("float > 1.0: %s\n", typeof(float_value));
+    }
+}
+
+void testLoop() {
+    printf("\n=== Loop Context ===\n");
+    
+    auto counter = 0;
+    printf("loop counter: %s\n", typeof(counter));
+    
+    while (counter < 3) {
+        printf("in loop [%d]: %s\n", counter, typeof(counter));
+        counter = counter + 1;
+    }
+}
+
+main() {
+    testIf();
+    testSwitch();
+    testLoop();
+    
+    return(0);
+}

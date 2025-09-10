@@ -1,0 +1,57 @@
+extrn printf;
+
+type enum Color {
+    RED,
+    GREEN,
+    BLUE,
+    YELLOW
+};
+
+type struct Shape {
+    shape_color Color;
+    x_pos       int;
+    y_pos       int;
+};
+
+Shape create_shape(c Color, x int, y int) {
+    new_shape := Shape{};
+    new_shape.shape_color = c;
+    new_shape.x_pos = x;
+    new_shape.y_pos = y;
+    return (new_shape);
+}
+
+void print_shape(s Shape) {
+    color_names := []byte*{ "RED", "GREEN", "BLUE", "YELLOW" };
+    printf("Shape -> Color: %s, Position: (%d, %d)\n",
+           color_names[s.shape_color], s.x_pos, s.y_pos);
+}
+
+void move_shape(s Shape*, dx int, dy int) {
+    s.x_pos = s.x_pos + dx;
+    s.y_pos = s.y_pos + dy;
+}
+
+int get_shape_x(s Shape) {
+    return (s.x_pos);
+}
+
+int main() {
+    printf("Creating a RED shape...\n");
+
+    auto sp = create_shape(RED, 10, 20);
+    print_shape(sp);
+
+    printf("\nMoving shape...\n");
+    move_shape(&sp, 5, -5);
+    print_shape(sp);
+
+    printf("\nChanging color...\n");
+    colors := []Color{ RED, GREEN, BLUE, YELLOW };
+    sp.shape_color = colors[(int(sp.shape_color) + 1) % 4];
+    print_shape(sp);
+
+    printf("\nThe final X position is: %d\n", get_shape_x(sp));
+
+    return (0);
+}

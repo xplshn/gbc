@@ -1,0 +1,21 @@
+extrn printf;
+
+int main() {
+   // Test same float type combinations  
+   float32 x = 1.5;
+   float32 y = 2.5;
+   
+   printf("x (float32): %.3f\n", x);
+   printf("y (float32): %.3f\n", y); 
+   
+   // Same type operations should preserve type
+   printf("x + y (float32 + float32): %.3f\n", x + y);  // Should be float32
+   printf("x * y (float32 * float32): %.3f\n", x * y);  // Should be float32
+   printf("x / y (float32 / float32): %.3f\n", x / y);  // Should be float32
+   
+   float64 a = 3.5;
+   float64 b = 4.5;
+   printf("a + b (float64 + float64): %.3f\n", a + b);  // Should be float64
+   
+   return (0);
+}

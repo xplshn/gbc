@@ -2,10 +2,10 @@ package typeChecker
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/xplshn/gbc/pkg/ast"
 	"github.com/xplshn/gbc/pkg/config"
+	"github.com/xplshn/gbc/pkg/ir"
 	"github.com/xplshn/gbc/pkg/token"
 	"github.com/xplshn/gbc/pkg/util"
 )
@@ -19,10 +19,7 @@ type Symbol struct {
 	Next   *Symbol
 }
 
-type Scope struct {
-	Symbols *Symbol
-	Parent  *Scope
-}
+type Scope struct { Symbols *Symbol; Parent *Scope }
 
 type TypeChecker struct {
 	currentScope *Scope
@@ -45,18 +42,16 @@ func NewTypeChecker(cfg *config.Config) *TypeChecker {
 }
 
 func newScope(parent *Scope) *Scope { return &Scope{Parent: parent} }
-func (tc *TypeChecker) enterScope()    { tc.currentScope = newScope(tc.currentScope) }
+func (tc *TypeChecker) enterScope() { tc.currentScope = newScope(tc.currentScope) }
 func (tc *TypeChecker) exitScope() {
-	if tc.currentScope.Parent != nil {
-		tc.currentScope = tc.currentScope.Parent
-	}
+	if tc.currentScope.Parent != nil { tc.currentScope = tc.currentScope.Parent }
 }
 
 func (tc *TypeChecker) typeErrorOrWarn(tok token.Token, format string, args ...interface{}) {
-	if tc.cfg.IsFeatureEnabled(config.FeatStrictTypes) {
+	if !tc.cfg.IsFeatureEnabled(config.FeatPromTypes) {
 		util.Error(tok, format, args...)
 	} else {
-		util.Warn(tc.cfg, config.WarnType, tok, format, args...)
+		util.Warn(tc.cfg, config.WarnPromTypes, tok, format, args...)
 	}
 }
 
@@ -66,12 +61,9 @@ func (tc *TypeChecker) addSymbol(node *ast.Node) *Symbol {
 	isFunc, isType := false, false
 
 	switch d := node.Data.(type) {
-	case ast.VarDeclNode:
-		name, typ = d.Name, d.Type
-	case ast.FuncDeclNode:
-		name, typ, isFunc = d.Name, d.ReturnType, true
-	case ast.TypeDeclNode:
-		name, typ, isType = d.Name, d.Type, true
+	case ast.VarDeclNode: name, typ = d.Name, d.Type
+	case ast.FuncDeclNode: name, typ, isFunc = d.Name, d.ReturnType, true
+	case ast.TypeDeclNode: name, typ, isType = d.Name, d.Type, true
 	case ast.EnumDeclNode:
 		name, isType = d.Name, true
 		typ = &ast.BxType{Kind: ast.TYPE_ENUM, Name: d.Name, EnumMembers: d.Members, Base: ast.TypeInt}
@@ -90,13 +82,14 @@ func (tc *TypeChecker) addSymbol(node *ast.Node) *Symbol {
 		for _, nameNode := range d.Names {
 			ident := nameNode.Data.(ast.IdentNode)
 			if tc.findSymbol(ident.Name, false) == nil {
-				sym := &Symbol{Name: ident.Name, Type: ast.TypeUntyped, IsFunc: true, Node: node, Next: tc.currentScope.Symbols}
+				symbolType := ast.TypeUntyped
+				if d.ReturnType != nil { symbolType = d.ReturnType }
+				sym := &Symbol{Name: ident.Name, Type: symbolType, IsFunc: true, Node: node, Next: tc.currentScope.Symbols}
 				tc.currentScope.Symbols = sym
 			}
 		}
 		return nil
-	case ast.IdentNode:
-		name, typ = d.Name, ast.TypeUntyped
+	case ast.IdentNode: name, typ = d.Name, ast.TypeUntyped
 	default:
 		return nil
 	}
@@ -105,11 +98,9 @@ func (tc *TypeChecker) addSymbol(node *ast.Node) *Symbol {
 
 	if existing := tc.findSymbol(name, isType); existing != nil && tc.currentScope == tc.globalScope {
 		isExistingExtrn := existing.Node != nil && existing.Node.Type == ast.ExtrnDecl
-		if isExistingExtrn || (existing.IsFunc && !isFunc && existing.Type.Kind == ast.TYPE_UNTYPED) {
-			existing.Type, existing.IsFunc, existing.IsType, existing.Node = typ, isFunc, isType, node
-			return existing
+		if !isExistingExtrn && !(existing.IsFunc && !isFunc && existing.Type.Kind == ast.TYPE_UNTYPED) {
+			util.Error(node.Tok, "Redefinition of '%s'", name)
 		}
-		util.Error(node.Tok, "Redefinition of '%s'", name)
 		existing.Type, existing.IsFunc, existing.IsType, existing.Node = typ, isFunc, isType, node
 		return existing
 	}
@@ -120,36 +111,59 @@ func (tc *TypeChecker) addSymbol(node *ast.Node) *Symbol {
 }
 
 func (tc *TypeChecker) findSymbol(name string, findTypes bool) *Symbol {
+	return tc.findSymbolInScopes(name, findTypes, false)
+}
+
+func (tc *TypeChecker) findSymbolInCurrentScope(name string, findTypes bool) *Symbol {
+	return tc.findSymbolInScopes(name, findTypes, true)
+}
+
+func (tc *TypeChecker) findSymbolInScopes(name string, findTypes, currentOnly bool) *Symbol {
 	for s := tc.currentScope; s != nil; s = s.Parent {
 		for sym := s.Symbols; sym != nil; sym = sym.Next {
 			if sym.Name == name && sym.IsType == findTypes {
 				return sym
 			}
 		}
+		if currentOnly {
+			break
+		}
 	}
 	return nil
 }
 
 func (tc *TypeChecker) getAlignof(typ *ast.BxType) int64 {
-	if typ == nil { return int64(tc.wordSize) }
+	if typ == nil {
+		return int64(tc.wordSize)
+	}
 
 	if (typ.Kind == ast.TYPE_PRIMITIVE || typ.Kind == ast.TYPE_STRUCT) && typ.Name != "" {
 		if sym := tc.findSymbol(typ.Name, true); sym != nil {
-			if sym.Type != typ { return tc.getAlignof(sym.Type) }
+			if sym.Type != typ {
+				return tc.getAlignof(sym.Type)
+			}
 		}
 	}
 
-	if typ.Kind == ast.TYPE_UNTYPED { return int64(tc.wordSize) }
+	if typ.Kind == ast.TYPE_UNTYPED {
+		return int64(tc.wordSize)
+	}
 	switch typ.Kind {
-	case ast.TYPE_VOID: return 1
-	case ast.TYPE_POINTER: return int64(tc.wordSize)
-	case ast.TYPE_ARRAY: return tc.getAlignof(typ.Base)
-	case ast.TYPE_PRIMITIVE, ast.TYPE_FLOAT, ast.TYPE_ENUM: return tc.getSizeof(typ)
+	case ast.TYPE_VOID:
+		return 1
+	case ast.TYPE_POINTER:
+		return int64(tc.wordSize)
+	case ast.TYPE_ARRAY:
+		return tc.getAlignof(typ.Base)
+	case ast.TYPE_PRIMITIVE, ast.TYPE_FLOAT, ast.TYPE_ENUM:
+		return tc.getSizeof(typ)
 	case ast.TYPE_STRUCT:
 		var maxAlign int64 = 1
 		for _, field := range typ.Fields {
 			fieldAlign := tc.getAlignof(field.Data.(ast.VarDeclNode).Type)
-			if fieldAlign > maxAlign { maxAlign = fieldAlign }
+			if fieldAlign > maxAlign {
+				maxAlign = fieldAlign
+			}
 		}
 		return maxAlign
 	}
@@ -157,10 +171,14 @@ func (tc *TypeChecker) getAlignof(typ *ast.BxType) int64 {
 }
 
 func (tc *TypeChecker) getSizeof(typ *ast.BxType) int64 {
-	if typ == nil || typ.Kind == ast.TYPE_UNTYPED { return int64(tc.wordSize) }
+	if typ == nil || typ.Kind == ast.TYPE_UNTYPED {
+		return int64(tc.wordSize)
+	}
 	switch typ.Kind {
-	case ast.TYPE_VOID: return 0
-	case ast.TYPE_POINTER: return int64(tc.wordSize)
+	case ast.TYPE_VOID:
+		return 0
+	case ast.TYPE_POINTER:
+		return int64(tc.wordSize)
 	case ast.TYPE_ARRAY:
 		elemSize := tc.getSizeof(typ.Base)
 		var arrayLen int64 = 1
@@ -172,54 +190,67 @@ func (tc *TypeChecker) getSizeof(typ *ast.BxType) int64 {
 			}
 		}
 		return elemSize * arrayLen
-	case ast.TYPE_PRIMITIVE, ast.TYPE_UNTYPED_INT:
-		switch typ.Name {
-		case "int", "uint", "string": return int64(tc.wordSize)
-		case "int64", "uint64": return 8
-		case "int32", "uint32": return 4
-		case "int16", "uint16": return 2
-		case "byte", "bool", "int8", "uint8": return 1
-		default:
-			if sym := tc.findSymbol(typ.Name, true); sym != nil { return tc.getSizeof(sym.Type) }
-			return int64(tc.wordSize)
+	case ast.TYPE_PRIMITIVE, ast.TYPE_LITERAL_INT:
+		resolver := ir.NewTypeSizeResolver(tc.wordSize)
+		if size := resolver.GetTypeSize(typ.Name); size > 0 {
+			return size
 		}
-	case ast.TYPE_ENUM: return tc.getSizeof(ast.TypeInt)
-	case ast.TYPE_FLOAT, ast.TYPE_UNTYPED_FLOAT:
-		switch typ.Name {
-		case "float", "float32": return 4
-		case "float64": return 8
-		default: return 4
+		// Fallback for user-defined types
+		if sym := tc.findSymbol(typ.Name, true); sym != nil {
+			return tc.getSizeof(sym.Type)
 		}
+		return int64(tc.wordSize)
+	case ast.TYPE_ENUM:
+		return tc.getSizeof(ast.TypeInt)
+	case ast.TYPE_FLOAT, ast.TYPE_LITERAL_FLOAT:
+		resolver := ir.NewTypeSizeResolver(tc.wordSize)
+		return resolver.GetTypeSize(typ.Name)
 	case ast.TYPE_STRUCT:
 		var totalSize, maxAlign int64 = 0, 1
 		for _, field := range typ.Fields {
 			fieldData := field.Data.(ast.VarDeclNode)
 			fieldAlign := tc.getAlignof(fieldData.Type)
-			if fieldAlign > maxAlign { maxAlign = fieldAlign }
+			if fieldAlign > maxAlign {
+				maxAlign = fieldAlign
+			}
 			totalSize = util.AlignUp(totalSize, fieldAlign)
 			totalSize += tc.getSizeof(fieldData.Type)
 		}
-		if maxAlign == 0 { maxAlign = 1 }
+		if maxAlign == 0 {
+			maxAlign = 1
+		}
 		return util.AlignUp(totalSize, maxAlign)
 	}
 	return int64(tc.wordSize)
 }
 
 func (tc *TypeChecker) Check(root *ast.Node) {
-	if !tc.cfg.IsFeatureEnabled(config.FeatTyped) { return }
+	if !tc.cfg.IsFeatureEnabled(config.FeatTyped) {
+		return
+	}
 	tc.collectGlobals(root)
 	tc.checkNode(root)
 	tc.annotateGlobalDecls(root)
 }
 
 func (tc *TypeChecker) collectGlobals(node *ast.Node) {
-	if node == nil || node.Type != ast.Block { return }
+	if node == nil || node.Type != ast.Block {
+		return
+	}
 	for _, stmt := range node.Data.(ast.BlockNode).Stmts {
 		switch stmt.Type {
-		case ast.VarDecl, ast.FuncDecl, ast.ExtrnDecl, ast.TypeDecl, ast.EnumDecl:
+		case ast.VarDecl:
+			if stmt.Data.(ast.VarDeclNode).IsDefine {
+				continue
+			}
+			tc.addSymbol(stmt)
+		case ast.FuncDecl, ast.ExtrnDecl, ast.TypeDecl, ast.EnumDecl:
 			tc.addSymbol(stmt)
 		case ast.MultiVarDecl:
 			for _, subStmt := range stmt.Data.(ast.MultiVarDeclNode).Decls {
+				if subStmt.Data.(ast.VarDeclNode).IsDefine {
+					continue
+				}
 				tc.addSymbol(subStmt)
 			}
 		}
@@ -227,11 +258,15 @@ func (tc *TypeChecker) collectGlobals(node *ast.Node) {
 }
 
 func (tc *TypeChecker) annotateGlobalDecls(root *ast.Node) {
-	if root == nil || root.Type != ast.Block { return }
+	if root == nil || root.Type != ast.Block {
+		return
+	}
 	for _, stmt := range root.Data.(ast.BlockNode).Stmts {
 		if stmt.Type == ast.VarDecl {
 			d, ok := stmt.Data.(ast.VarDeclNode)
-			if !ok { continue }
+			if !ok {
+				continue
+			}
 			if globalSym := tc.findSymbol(d.Name, false); globalSym != nil {
 				if (d.Type == nil || d.Type.Kind == ast.TYPE_UNTYPED) && (globalSym.Type != nil && globalSym.Type.Kind != ast.TYPE_UNTYPED) {
 					d.Type = globalSym.Type
@@ -243,15 +278,21 @@ func (tc *TypeChecker) annotateGlobalDecls(root *ast.Node) {
 }
 
 func (tc *TypeChecker) checkNode(node *ast.Node) {
-	if node == nil { return }
+	if node == nil {
+		return
+	}
 	switch node.Type {
 	case ast.Block:
 		d := node.Data.(ast.BlockNode)
-		if !d.IsSynthetic { tc.enterScope() }
+		if !d.IsSynthetic {
+			tc.enterScope()
+		}
 		for _, stmt := range d.Stmts {
 			tc.checkNode(stmt)
 		}
-		if !d.IsSynthetic { tc.exitScope() }
+		if !d.IsSynthetic {
+			tc.exitScope()
+		}
 	case ast.FuncDecl:
 		tc.checkFuncDecl(node)
 	case ast.VarDecl:
@@ -296,7 +337,9 @@ func (tc *TypeChecker) checkNode(node *ast.Node) {
 
 func (tc *TypeChecker) checkFuncDecl(node *ast.Node) {
 	d := node.Data.(ast.FuncDeclNode)
-	if d.Body == nil || d.Body.Type == ast.AsmStmt { return }
+	if d.Body == nil || d.Body.Type == ast.AsmStmt {
+		return
+	}
 	prevFunc := tc.currentFunc
 	tc.currentFunc = &d
 	defer func() { tc.currentFunc = prevFunc }()
@@ -310,10 +353,16 @@ func (tc *TypeChecker) checkFuncDecl(node *ast.Node) {
 
 func (tc *TypeChecker) checkVarDecl(node *ast.Node) {
 	d := node.Data.(ast.VarDeclNode)
-	if d.IsDefine && tc.findSymbol(d.Name, false) != nil {
-		util.Error(node.Tok, "Trying to assign to undeclared identifier, use := or define with a explicit type or auto")
+	if d.IsDefine {
+		if sym := tc.findSymbolInCurrentScope(d.Name, false); sym != nil {
+			util.Error(node.Tok, "no new variables on left side of := (redeclaration of '%s')", d.Name)
+		} else {
+			tc.addSymbol(node)
+		}
+	} else if tc.currentFunc != nil && tc.findSymbolInCurrentScope(d.Name, false) == nil {
+		tc.addSymbol(node)
 	}
-	if tc.currentFunc != nil { tc.addSymbol(node) }
+
 	if len(d.InitList) == 0 {
 		if (d.Type == nil || d.Type.Kind == ast.TYPE_UNTYPED) && !tc.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
 			util.Error(node.Tok, "Uninitialized variable '%s' is not allowed in this mode", d.Name)
@@ -323,8 +372,51 @@ func (tc *TypeChecker) checkVarDecl(node *ast.Node) {
 	}
 
 	initExpr := d.InitList[0]
+
+	if d.IsDefine && (d.Type == nil || d.Type.Kind == ast.TYPE_UNTYPED) {
+		if structTypeSym := tc.findSymbol(d.Name, true); structTypeSym != nil && structTypeSym.IsType {
+			structType := tc.resolveType(structTypeSym.Type)
+			if structType.Kind == ast.TYPE_STRUCT {
+				var operandExpr *ast.Node
+				if initExpr.Type == ast.UnaryOp {
+					unaryOp := initExpr.Data.(ast.UnaryOpNode)
+					if unaryOp.Op == token.Star {
+						operandExpr = unaryOp.Expr
+					}
+				} else if initExpr.Type == ast.Indirection {
+					indirOp := initExpr.Data.(ast.IndirectionNode)
+					operandExpr = indirOp.Expr
+				}
+
+				if operandExpr != nil {
+					operandType := tc.checkExpr(operandExpr)
+					resolvedOpType := tc.resolveType(operandType)
+					if resolvedOpType.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(resolvedOpType) {
+						promotedType := &ast.BxType{Kind: ast.TYPE_POINTER, Base: structType}
+						operandExpr.Typ = promotedType
+						if operandExpr.Type == ast.Ident {
+							if sym := tc.findSymbol(operandExpr.Data.(ast.IdentNode).Name, false); sym != nil {
+								sym.Type = promotedType
+							}
+						}
+						initExpr.Typ = structType
+						d.Type = structType
+						node.Data = d
+						if sym := tc.findSymbol(d.Name, false); sym != nil {
+							sym.Type = structType
+						}
+						node.Typ = structType
+						return
+					}
+				}
+			}
+		}
+	}
+
 	initType := tc.checkExpr(initExpr)
-	if initType == nil { return }
+	if initType == nil {
+		return
+	}
 
 	if d.Type == nil || d.Type.Kind == ast.TYPE_UNTYPED {
 		d.Type = initType
@@ -332,14 +424,21 @@ func (tc *TypeChecker) checkVarDecl(node *ast.Node) {
 		if sym := tc.findSymbol(d.Name, false); sym != nil {
 			sym.Type = initType
 		}
-	} else if initType.Kind == ast.TYPE_UNTYPED_INT || initType.Kind == ast.TYPE_UNTYPED_FLOAT {
+		if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
+			if d.IsDefine {
+				util.Warn(tc.cfg, config.WarnDebugComp, node.Tok, "Guessing (:=) is %s of type: '%s'", d.Name, ast.TypeToString(initType))
+			} else {
+				util.Warn(tc.cfg, config.WarnDebugComp, node.Tok, "Guessing (auto) is %s of type: '%s'", d.Name, ast.TypeToString(initType))
+			}
+		}
+	} else if initType.Kind == ast.TYPE_LITERAL_INT || initType.Kind == ast.TYPE_LITERAL_FLOAT {
 		if tc.isNumericType(d.Type) || d.Type.Kind == ast.TYPE_POINTER || d.Type.Kind == ast.TYPE_BOOL {
 			initExpr.Typ = d.Type
 			initType = d.Type
 		}
 	}
 	if !tc.areTypesCompatible(d.Type, initType, initExpr) {
-		tc.typeErrorOrWarn(node.Tok, "Initializing variable of type '%s' with expression of incompatible type '%s'", typeToString(d.Type), typeToString(initType))
+		tc.typeErrorOrWarn(node.Tok, "Initializing variable of type '%s' with expression of incompatible type '%s'", ast.TypeToString(d.Type), ast.TypeToString(initType))
 	}
 	node.Typ = d.Type
 }
@@ -347,7 +446,9 @@ func (tc *TypeChecker) checkVarDecl(node *ast.Node) {
 func (tc *TypeChecker) isSymbolLocal(name string) bool {
 	for s := tc.currentScope; s != nil && s != tc.globalScope; s = s.Parent {
 		for sym := s.Symbols; sym != nil; sym = sym.Next {
-			if sym.Name == name && !sym.IsType { return true }
+			if sym.Name == name && !sym.IsType {
+				return true
+			}
 		}
 	}
 	return false
@@ -356,7 +457,9 @@ func (tc *TypeChecker) isSymbolLocal(name string) bool {
 func (tc *TypeChecker) checkReturn(node *ast.Node) {
 	d := node.Data.(ast.ReturnNode)
 	if tc.currentFunc == nil {
-		if d.Expr != nil { util.Error(node.Tok, "Return with value used outside of a function") }
+		if d.Expr != nil {
+			util.Error(node.Tok, "Return with value used outside of a function")
+		}
 		return
 	}
 
@@ -384,33 +487,57 @@ func (tc *TypeChecker) checkReturn(node *ast.Node) {
 	retType := tc.currentFunc.ReturnType
 	if d.Expr == nil {
 		if retType.Kind != ast.TYPE_VOID {
-			util.Error(node.Tok, "Return with no value in function returning non-void type ('%s')", typeToString(retType))
+			util.Error(node.Tok, "Return with no value in function returning non-void type ('%s')", ast.TypeToString(retType))
 		}
 	} else {
 		exprType := tc.checkExpr(d.Expr)
 		if retType.Kind == ast.TYPE_VOID {
 			util.Error(node.Tok, "Return with a value in function returning void")
 		} else if !tc.areTypesCompatible(retType, exprType, d.Expr) {
-			tc.typeErrorOrWarn(node.Tok, "Returning type '%s' is incompatible with function return type '%s'", typeToString(exprType), typeToString(retType))
+			tc.typeErrorOrWarn(node.Tok, "Returning type '%s' is incompatible with function return type '%s'", ast.TypeToString(exprType), ast.TypeToString(retType))
 		}
 	}
 }
 
 func (tc *TypeChecker) checkExprAsCondition(node *ast.Node) {
 	typ := tc.checkExpr(node)
-	if !(tc.isScalarType(typ) || typ.Kind == ast.TYPE_UNTYPED || typ.Kind == ast.TYPE_UNTYPED_INT) {
-		util.Warn(tc.cfg, config.WarnType, node.Tok, "Expression of type '%s' used as a condition", typeToString(typ))
+	if !(tc.isScalarType(typ) || typ.Kind == ast.TYPE_UNTYPED || typ.Kind == ast.TYPE_LITERAL_INT) {
+		util.Warn(tc.cfg, config.WarnPromTypes, node.Tok, "Expression of type '%s' used as a condition", ast.TypeToString(typ))
 	}
 }
 
 func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
-	if node == nil { return ast.TypeUntyped }
-	if node.Typ != nil && node.Typ.Kind != ast.TYPE_UNTYPED_INT && node.Typ.Kind != ast.TYPE_UNTYPED_FLOAT {
+	if node == nil {
+		return ast.TypeUntyped
+	}
+	if node.Typ != nil && node.Typ.Kind != ast.TYPE_LITERAL_INT && node.Typ.Kind != ast.TYPE_LITERAL_FLOAT {
 		return node.Typ
 	}
 	var typ *ast.BxType
 	switch d := node.Data.(type) {
 	case ast.AssignNode:
+		if d.Op == token.Define {
+			if d.Lhs.Type != ast.Ident {
+				util.Error(node.Tok, "Cannot declare non-identifier with ':='")
+				typ = ast.TypeUntyped
+				break
+			}
+			name := d.Lhs.Data.(ast.IdentNode).Name
+			if sym := tc.findSymbolInCurrentScope(name, false); sym != nil {
+				util.Error(node.Tok, "no new variables on left side of := (redeclaration of '%s')", name)
+				typ = sym.Type
+				break
+			}
+
+			rhsType := tc.checkExpr(d.Rhs)
+			varDeclNode := ast.NewVarDecl(d.Lhs.Tok, name, rhsType, []*ast.Node{d.Rhs}, nil, false, false, true)
+			tc.addSymbol(varDeclNode)
+			node.Type = ast.VarDecl
+			node.Data = varDeclNode.Data
+			node.Typ = rhsType
+			return rhsType
+		}
+
 		lhsType, rhsType := tc.checkExpr(d.Lhs), tc.checkExpr(d.Rhs)
 
 		isLhsScalar := tc.isScalarType(lhsType) && lhsType.Kind != ast.TYPE_POINTER
@@ -442,8 +569,8 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 			}
 		}
 		if !tc.areTypesCompatible(lhsType, rhsType, d.Rhs) {
-			tc.typeErrorOrWarn(node.Tok, "Assigning to type '%s' from incompatible type '%s'", typeToString(lhsType), typeToString(rhsType))
-		} else if rhsType.Kind == ast.TYPE_UNTYPED_INT || rhsType.Kind == ast.TYPE_UNTYPED_FLOAT {
+			tc.typeErrorOrWarn(node.Tok, "Assigning to type '%s' from incompatible type '%s'", ast.TypeToString(lhsType), ast.TypeToString(rhsType))
+		} else if rhsType.Kind == ast.TYPE_LITERAL_INT || rhsType.Kind == ast.TYPE_LITERAL_FLOAT {
 			if tc.isNumericType(lhsType) || lhsType.Kind == ast.TYPE_POINTER || lhsType.Kind == ast.TYPE_BOOL {
 				d.Rhs.Typ = lhsType
 			}
@@ -456,6 +583,7 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 		operandType := tc.checkExpr(d.Expr)
 		switch d.Op {
 		case token.Star:
+			operandType := tc.checkExpr(d.Expr)
 			resolvedOpType := tc.resolveType(operandType)
 			if resolvedOpType.Kind == ast.TYPE_POINTER || resolvedOpType.Kind == ast.TYPE_ARRAY {
 				typ = resolvedOpType.Base
@@ -471,7 +599,7 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 				}
 				typ = promotedType.Base
 			} else {
-				util.Error(node.Tok, "Cannot dereference non-pointer type '%s'", typeToString(operandType))
+				util.Error(node.Tok, "Cannot dereference non-pointer type '%s'", ast.TypeToString(operandType))
 				typ = ast.TypeUntyped
 			}
 		case token.And:
@@ -485,7 +613,7 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 		tc.checkExprAsCondition(d.Cond)
 		thenType, elseType := tc.checkExpr(d.ThenExpr), tc.checkExpr(d.ElseExpr)
 		if !tc.areTypesCompatible(thenType, elseType, d.ElseExpr) {
-			tc.typeErrorOrWarn(node.Tok, "Type mismatch in ternary expression branches ('%s' vs '%s')", typeToString(thenType), typeToString(elseType))
+			tc.typeErrorOrWarn(node.Tok, "Type mismatch in ternary expression branches ('%s' vs '%s')", ast.TypeToString(thenType), ast.TypeToString(elseType))
 		}
 		if thenType != nil && thenType.Kind == ast.TYPE_POINTER {
 			typ = thenType
@@ -496,8 +624,8 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 		}
 	case ast.SubscriptNode:
 		arrayType, indexType := tc.checkExpr(d.Array), tc.checkExpr(d.Index)
-		if !tc.isIntegerType(indexType) && indexType.Kind != ast.TYPE_UNTYPED && indexType.Kind != ast.TYPE_UNTYPED_INT {
-			tc.typeErrorOrWarn(d.Index.Tok, "Array subscript is not an integer type ('%s')", typeToString(indexType))
+		if !tc.isIntegerType(indexType) && indexType.Kind != ast.TYPE_UNTYPED && indexType.Kind != ast.TYPE_LITERAL_INT && indexType.Kind != ast.TYPE_ENUM {
+			tc.typeErrorOrWarn(d.Index.Tok, "Array subscript is not an integer type ('%s')", ast.TypeToString(indexType))
 		}
 		resolvedArrayType := tc.resolveType(arrayType)
 		if resolvedArrayType.Kind == ast.TYPE_ARRAY || resolvedArrayType.Kind == ast.TYPE_POINTER {
@@ -515,22 +643,49 @@ func (tc *TypeChecker) checkExpr(node *ast.Node) *ast.BxType {
 			}
 			typ = promotedType.Base
 		} else {
-			util.Error(node.Tok, "Cannot subscript non-array/pointer type '%s'", typeToString(arrayType))
+			util.Error(node.Tok, "Cannot subscript non-array/pointer type '%s'", ast.TypeToString(arrayType))
 			typ = ast.TypeUntyped
 		}
 	case ast.MemberAccessNode:
 		typ = tc.checkMemberAccess(node)
 	case ast.FuncCallNode:
 		typ = tc.checkFuncCall(node)
+	case ast.IndirectionNode:
+		// Handle indirection (dereferencing) operations
+		indirData := node.Data.(ast.IndirectionNode)
+		operandType := tc.checkExpr(indirData.Expr)
+		resolvedOpType := tc.resolveType(operandType)
+		if resolvedOpType.Kind == ast.TYPE_POINTER || resolvedOpType.Kind == ast.TYPE_ARRAY {
+			typ = resolvedOpType.Base
+		} else if resolvedOpType.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(resolvedOpType) {
+			promotedType := &ast.BxType{Kind: ast.TYPE_POINTER, Base: ast.TypeUntyped}
+			indirData.Expr.Typ = promotedType
+			if indirData.Expr.Type == ast.Ident {
+				if sym := tc.findSymbol(indirData.Expr.Data.(ast.IdentNode).Name, false); sym != nil {
+					if sym.Type == nil || sym.Type.Kind == ast.TYPE_UNTYPED || tc.isIntegerType(sym.Type) {
+						sym.Type = promotedType
+					}
+				}
+			}
+			typ = promotedType.Base
+		} else {
+			util.Error(node.Tok, "Cannot dereference non-pointer type '%s'", ast.TypeToString(operandType))
+			typ = ast.TypeUntyped
+		}
 	case ast.TypeCastNode:
 		tc.checkExpr(d.Expr)
 		typ = d.TargetType
+	case ast.TypeOfNode:
+		tc.checkExpr(d.Expr)
+		typ = ast.TypeString // typeOf always returns a string
 	case ast.StructLiteralNode:
 		typ = tc.checkStructLiteral(node)
+	case ast.ArrayLiteralNode:
+		typ = tc.checkArrayLiteral(node)
 	case ast.NumberNode:
-		typ = ast.TypeUntypedInt
+		typ = ast.TypeLiteralInt
 	case ast.FloatNumberNode:
-		typ = ast.TypeUntypedFloat
+		typ = ast.TypeLiteralFloat
 	case ast.StringNode:
 		typ = ast.TypeString
 	case ast.NilNode:
@@ -582,7 +737,9 @@ func (tc *TypeChecker) checkMemberAccess(node *ast.Node) *ast.BxType {
 
 	baseType := tc.resolveType(exprType)
 
-	if baseType != nil && baseType.Kind == ast.TYPE_POINTER { baseType = baseType.Base }
+	if baseType != nil && baseType.Kind == ast.TYPE_POINTER {
+		baseType = baseType.Base
+	}
 
 	resolvedStructType := tc.resolveType(baseType)
 
@@ -605,7 +762,7 @@ func (tc *TypeChecker) checkMemberAccess(node *ast.Node) *ast.BxType {
 
 	if resolvedStructType == nil || resolvedStructType.Kind != ast.TYPE_STRUCT {
 		memberName := d.Member.Data.(ast.IdentNode).Name
-		util.Error(node.Tok, "request for member '%s' in non-struct type '%s'", memberName, typeToString(exprType))
+		util.Error(node.Tok, "request for member '%s' in non-struct type '%s'", memberName, ast.TypeToString(exprType))
 		return ast.TypeUntyped
 	}
 
@@ -618,18 +775,26 @@ func (tc *TypeChecker) checkMemberAccess(node *ast.Node) *ast.BxType {
 		}
 	}
 
-	util.Error(node.Tok, "no member named '%s' in struct '%s'", memberName, typeToString(resolvedStructType))
+	util.Error(node.Tok, "no member named '%s' in struct '%s'", memberName, ast.TypeToString(resolvedStructType))
 	return ast.TypeUntyped
 }
 
 func (tc *TypeChecker) typeFromName(name string) *ast.BxType {
-	if sym := tc.findSymbol(name, true); sym != nil && sym.IsType { return sym.Type }
+	if sym := tc.findSymbol(name, true); sym != nil && sym.IsType {
+		return sym.Type
+	}
 
 	tokType, isKeyword := token.KeywordMap[name]
 	if isKeyword && tokType >= token.Void && tokType <= token.Any {
-		if tokType == token.Void { return ast.TypeVoid }
-		if tokType == token.StringKeyword { return ast.TypeString }
-		if tokType >= token.Float && tokType <= token.Float64 { return &ast.BxType{Kind: ast.TYPE_FLOAT, Name: name} }
+		if tokType == token.Void {
+			return ast.TypeVoid
+		}
+		if tokType == token.StringKeyword {
+			return ast.TypeString
+		}
+		if tokType >= token.Float && tokType <= token.Float64 {
+			return &ast.BxType{Kind: ast.TYPE_FLOAT, Name: name}
+		}
 		return &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: name}
 	}
 	return nil
@@ -651,7 +816,9 @@ func (tc *TypeChecker) checkFuncCall(node *ast.Node) *ast.BxType {
 					targetType = sym.Type
 				}
 			}
-			if targetType == nil { targetType = tc.checkExpr(arg) }
+			if targetType == nil {
+				targetType = tc.checkExpr(arg)
+			}
 			if targetType == nil {
 				util.Error(arg.Tok, "Cannot determine type for sizeof argument")
 				return ast.TypeUntyped
@@ -715,7 +882,9 @@ func (tc *TypeChecker) checkFuncCall(node *ast.Node) *ast.BxType {
 	}
 
 	resolvedType := tc.resolveType(funcExprType)
-	if resolvedType != nil && resolvedType.Kind == ast.TYPE_STRUCT { return resolvedType }
+	if resolvedType != nil && resolvedType.Kind == ast.TYPE_STRUCT {
+		return resolvedType
+	}
 
 	return funcExprType
 }
@@ -749,7 +918,7 @@ func (tc *TypeChecker) checkStructLiteral(node *ast.Node) *ast.BxType {
 					currentFieldType := tc.resolveType(structType.Fields[i].Data.(ast.VarDeclNode).Type)
 					if !tc.areTypesEqual(firstFieldType, currentFieldType) {
 						util.Error(node.Tok, "positional struct literal for '%s' is only allowed if all fields have the same type, but found '%s' and '%s'",
-							typeIdent.Name, typeToString(firstFieldType), typeToString(currentFieldType))
+							typeIdent.Name, ast.TypeToString(firstFieldType), ast.TypeToString(currentFieldType))
 						break
 					}
 				}
@@ -765,11 +934,13 @@ func (tc *TypeChecker) checkStructLiteral(node *ast.Node) *ast.BxType {
 			field := structType.Fields[i].Data.(ast.VarDeclNode)
 			valType := tc.checkExpr(valNode)
 			if !tc.areTypesCompatible(field.Type, valType, valNode) {
-				tc.typeErrorOrWarn(valNode.Tok, "Initializer for field '%s' has wrong type. Expected '%s', got '%s'", field.Name, typeToString(field.Type), typeToString(valType))
+				tc.typeErrorOrWarn(valNode.Tok, "Initializer for field '%s' has wrong type. Expected '%s', got '%s'", field.Name, ast.TypeToString(field.Type), ast.TypeToString(valType))
 			}
 		}
 	} else {
-		if len(d.Values) > len(structType.Fields) { util.Error(node.Tok, "Too many initializers for struct '%s'", typeIdent.Name) }
+		if len(d.Values) > len(structType.Fields) {
+			util.Error(node.Tok, "Too many initializers for struct '%s'", typeIdent.Name)
+		}
 
 		fieldMap := make(map[string]*ast.Node)
 		for _, fieldNode := range structType.Fields {
@@ -780,7 +951,9 @@ func (tc *TypeChecker) checkStructLiteral(node *ast.Node) *ast.BxType {
 		usedFields := make(map[string]bool)
 
 		for i, nameNode := range d.Names {
-			if nameNode == nil { continue }
+			if nameNode == nil {
+				continue
+			}
 			fieldName := nameNode.Data.(ast.IdentNode).Name
 
 			if usedFields[fieldName] {
@@ -800,7 +973,7 @@ func (tc *TypeChecker) checkStructLiteral(node *ast.Node) *ast.BxType {
 			fieldType := field.Data.(ast.VarDeclNode).Type
 
 			if !tc.areTypesCompatible(fieldType, valType, valNode) {
-				tc.typeErrorOrWarn(valNode.Tok, "Initializer for field '%s' has wrong type. Expected '%s', got '%s'", fieldName, typeToString(fieldType), typeToString(valType))
+				tc.typeErrorOrWarn(valNode.Tok, "Initializer for field '%s' has wrong type. Expected '%s', got '%s'", fieldName, ast.TypeToString(fieldType), ast.TypeToString(valType))
 			}
 		}
 	}
@@ -808,78 +981,298 @@ func (tc *TypeChecker) checkStructLiteral(node *ast.Node) *ast.BxType {
 	return structType
 }
 
+func (tc *TypeChecker) checkArrayLiteral(node *ast.Node) *ast.BxType {
+	d := node.Data.(ast.ArrayLiteralNode)
+
+	// Create pointer type to element type (since array literals decay to pointers)
+	pointerType := &ast.BxType{Kind: ast.TYPE_POINTER, Base: d.ElementType}
+
+	// Type check all the values
+	for i, valueNode := range d.Values {
+		valueType := tc.checkExpr(valueNode)
+		if !tc.areTypesCompatible(d.ElementType, valueType, valueNode) {
+			tc.typeErrorOrWarn(valueNode.Tok, "Array element %d has wrong type. Expected '%s', got '%s'",
+				i, ast.TypeToString(d.ElementType), ast.TypeToString(valueType))
+		}
+	}
+
+	return pointerType
+}
+
+// getNodeName extracts a meaningful string representation from an AST node for error messages
+func (tc *TypeChecker) getNodeName(node *ast.Node) string {
+	if node == nil {
+		return "operand"
+	}
+
+	switch node.Type {
+	case ast.Ident:
+		return node.Data.(ast.IdentNode).Name
+	case ast.Number:
+		return fmt.Sprintf("%d", node.Data.(ast.NumberNode).Value)
+	case ast.FloatNumber:
+		return fmt.Sprintf("%g", node.Data.(ast.FloatNumberNode).Value)
+	case ast.String:
+		return fmt.Sprintf("\"%s\"", node.Data.(ast.StringNode).Value)
+	case ast.MemberAccess:
+		// Handle member access like sp.shape_color
+		memberData := node.Data.(ast.MemberAccessNode)
+		exprName := tc.getNodeName(memberData.Expr)
+		memberName := tc.getNodeName(memberData.Member)
+		return fmt.Sprintf("%s.%s", exprName, memberName)
+	default:
+		return "operand"
+	}
+}
+
 func (tc *TypeChecker) getBinaryOpResultType(op token.Type, left, right *ast.BxType, tok token.Token, leftNode, rightNode *ast.Node) *ast.BxType {
 	resLeft, resRight := tc.resolveType(left), tc.resolveType(right)
 	lType, rType := resLeft, resRight
 
-	if lType.Kind == ast.TYPE_UNTYPED_INT && tc.isIntegerType(rType) {
-		if tc.getSizeof(rType) < tc.getSizeof(ast.TypeInt) {
-			lType, rType = ast.TypeInt, ast.TypeInt
-			if rightNode.Typ.Kind != ast.TYPE_UNTYPED_INT { rightNode.Typ = ast.TypeInt }
+	// Check for explicit type mismatch (both operands are explicitly typed but different)
+	if lType.Kind != ast.TYPE_LITERAL_INT && lType.Kind != ast.TYPE_LITERAL_FLOAT && lType.Kind != ast.TYPE_UNTYPED &&
+		rType.Kind != ast.TYPE_LITERAL_INT && rType.Kind != ast.TYPE_LITERAL_FLOAT && rType.Kind != ast.TYPE_UNTYPED &&
+		tc.isNumericType(lType) && tc.isNumericType(rType) && !tc.areTypesEqual(lType, rType) {
+		// For numeric types of different sizes, emit warning and promote to larger type
+		if tc.isIntegerType(lType) && tc.isIntegerType(rType) {
+			if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) {
+				util.Warn(tc.cfg, config.WarnDebugComp, tok, "Variable promoted from '%s' to '%s'", ast.TypeToString(left), ast.TypeToString(right))
+			} else {
+				// For enum vs int mismatches, suggest casting the enum to its base type
+				if lType.Kind == ast.TYPE_ENUM && tc.isIntegerType(rType) && rType.Kind != ast.TYPE_ENUM {
+					leftNodeName := tc.getNodeName(leftNode)
+					baseTypeName := ast.TypeToString(lType.Base)
+					tc.typeErrorOrWarn(tok, "operand of type '%s' mismatches operand of type '%s', use %s(%s)", ast.TypeToString(left), ast.TypeToString(right), baseTypeName, leftNodeName)
+				} else if rType.Kind == ast.TYPE_ENUM && tc.isIntegerType(lType) && lType.Kind != ast.TYPE_ENUM {
+					rightNodeName := tc.getNodeName(rightNode)
+					baseTypeName := ast.TypeToString(rType.Base)
+					tc.typeErrorOrWarn(tok, "operand of type '%s' mismatches operand of type '%s', use %s(%s)", ast.TypeToString(left), ast.TypeToString(right), baseTypeName, rightNodeName)
+				} else {
+					rightNodeName := tc.getNodeName(rightNode)
+					tc.typeErrorOrWarn(tok, "operand of type '%s' mismatches operand of type '%s', use %s(%s)", ast.TypeToString(left), ast.TypeToString(right), ast.TypeToString(right), rightNodeName)
+				}
+			}
+			// Promote to larger type for integer operations
+			if tc.getSizeof(lType) > tc.getSizeof(rType) {
+				rType = lType
+				rightNode.Typ = rType
+			} else {
+				lType = rType
+				leftNode.Typ = lType
+			}
 		} else {
-			lType = rType
+			// For enum vs int mismatches, suggest casting the enum to its base type
+			if lType.Kind == ast.TYPE_ENUM && tc.isIntegerType(rType) && rType.Kind != ast.TYPE_ENUM {
+				leftNodeName := tc.getNodeName(leftNode)
+				baseTypeName := ast.TypeToString(lType.Base)
+				tc.typeErrorOrWarn(tok, "operand of type '%s' mismatches operand of type '%s', use %s(%s)", ast.TypeToString(left), ast.TypeToString(right), baseTypeName, leftNodeName)
+			} else if rType.Kind == ast.TYPE_ENUM && tc.isIntegerType(lType) && lType.Kind != ast.TYPE_ENUM {
+				rightNodeName := tc.getNodeName(rightNode)
+				baseTypeName := ast.TypeToString(rType.Base)
+				tc.typeErrorOrWarn(tok, "operand of type '%s' mismatches operand of type '%s', use %s(%s)", ast.TypeToString(left), ast.TypeToString(right), baseTypeName, rightNodeName)
+			} else {
+				rightNodeName := tc.getNodeName(rightNode)
+				tc.typeErrorOrWarn(tok, "operand of type '%s' mismatches operand of type '%s', use %s(%s)", ast.TypeToString(left), ast.TypeToString(right), ast.TypeToString(right), rightNodeName)
+			}
 		}
-		leftNode.Typ = lType
-	}
-	if rType.Kind == ast.TYPE_UNTYPED_INT && tc.isIntegerType(lType) {
-		if tc.getSizeof(lType) < tc.getSizeof(ast.TypeInt) {
-			lType, rType = ast.TypeInt, ast.TypeInt
-			if leftNode.Typ.Kind != ast.TYPE_UNTYPED_INT { leftNode.Typ = ast.TypeInt }
-		} else {
-			rType = lType
-		}
-		rightNode.Typ = rType
 	}
 
-	if lType.Kind == ast.TYPE_UNTYPED_FLOAT && tc.isFloatType(rType) {
+	// Handle untyped promotion based on weak-types feature
+	// But don't warn when both operands are the same untyped type
+	bothUntypedInt := left.Kind == ast.TYPE_LITERAL_INT && right.Kind == ast.TYPE_LITERAL_INT
+	bothUntyped := left.Kind == ast.TYPE_UNTYPED && right.Kind == ast.TYPE_UNTYPED
+
+	if lType.Kind == ast.TYPE_LITERAL_INT && tc.isIntegerType(rType) {
+		if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) && !bothUntypedInt {
+			util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped literal promoted from '%s' to '%s'", ast.TypeToString(left), ast.TypeToString(rType))
+		}
 		lType = rType
-		leftNode.Typ = rType
+		leftNode.Typ = lType
 	}
-	if rType.Kind == ast.TYPE_UNTYPED_FLOAT && tc.isFloatType(lType) {
+	if rType.Kind == ast.TYPE_LITERAL_INT && tc.isIntegerType(lType) {
+		if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) && !bothUntypedInt {
+			util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped literal promoted from '%s' to '%s'", ast.TypeToString(right), ast.TypeToString(lType))
+		}
 		rType = lType
 		rightNode.Typ = rType
 	}
 
+	if lType.Kind == ast.TYPE_LITERAL_FLOAT && tc.isFloatType(rType) {
+		if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) {
+			util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped literal promoted from '%s' to '%s'", ast.TypeToString(left), ast.TypeToString(rType))
+		}
+		lType = rType
+		leftNode.Typ = rType
+	}
+	if rType.Kind == ast.TYPE_LITERAL_FLOAT && tc.isFloatType(lType) {
+		if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) {
+			util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped literal promoted from '%s' to '%s'", ast.TypeToString(right), ast.TypeToString(lType))
+		}
+		rType = lType
+		rightNode.Typ = rType
+	}
+
+	// Handle operations between two untyped operands
+	if bothUntyped {
+		// Check if both operands are literals
+		leftIsLiteral := leftNode != nil && (leftNode.Type == ast.Number || leftNode.Type == ast.FloatNumber)
+		rightIsLiteral := rightNode != nil && (rightNode.Type == ast.Number || rightNode.Type == ast.FloatNumber)
+
+		// For untyped + untyped, emit warning
+		if leftIsLiteral && rightIsLiteral {
+			// Both are literals, use DebugComp warning
+			if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
+				util.Warn(tc.cfg, config.WarnDebugComp, tok, "Operation between untyped operands")
+			}
+		} else {
+			// At least one is not a literal, use prom-types warning
+			if tc.cfg.IsWarningEnabled(config.WarnPromTypes) {
+				util.Warn(tc.cfg, config.WarnPromTypes, tok, "Operation between untyped operands")
+			}
+		}
+		// Default to int type for untyped operations
+		lType = ast.TypeInt
+		rType = ast.TypeInt
+		leftNode.Typ = ast.TypeInt
+		rightNode.Typ = ast.TypeInt
+	}
+
+	// Handle operations between untyped and typed operands
+	if lType.Kind == ast.TYPE_UNTYPED && tc.isIntegerType(rType) {
+		if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) || !bothUntyped {
+			// Check if the operand is a literal
+			leftIsLiteral := leftNode != nil && (leftNode.Type == ast.Number || leftNode.Type == ast.FloatNumber)
+
+			if leftIsLiteral {
+				// Literal promotion, use DebugComp warning
+				if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
+					util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped operand promoted to '%s'", ast.TypeToString(rType))
+				}
+			} else {
+				// Variable promotion, use prom-types warning
+				if tc.cfg.IsWarningEnabled(config.WarnPromTypes) {
+					util.Warn(tc.cfg, config.WarnPromTypes, tok, "Untyped operand promoted to '%s'", ast.TypeToString(rType))
+				}
+			}
+		}
+		lType = rType
+		leftNode.Typ = rType
+	}
+	if rType.Kind == ast.TYPE_UNTYPED && tc.isIntegerType(lType) {
+		if tc.cfg.IsFeatureEnabled(config.FeatPromTypes) || !bothUntyped {
+			// Check if the operand is a literal
+			rightIsLiteral := rightNode != nil && (rightNode.Type == ast.Number || rightNode.Type == ast.FloatNumber)
+
+			if rightIsLiteral {
+				// Literal promotion, use DebugComp warning
+				if tc.cfg.IsWarningEnabled(config.WarnDebugComp) {
+					util.Warn(tc.cfg, config.WarnDebugComp, tok, "Untyped operand promoted to '%s'", ast.TypeToString(lType))
+				}
+			} else {
+				// Variable promotion, use prom-types warning
+				if tc.cfg.IsWarningEnabled(config.WarnPromTypes) {
+					util.Warn(tc.cfg, config.WarnPromTypes, tok, "Untyped operand promoted to '%s'", ast.TypeToString(lType))
+				}
+			}
+		}
+		rType = lType
+		rightNode.Typ = lType
+	}
+
 	resLeft, resRight = lType, rType
 
-	if op >= token.EqEq && op <= token.OrOr { return ast.TypeInt }
+	if op >= token.EqEq && op <= token.OrOr {
+		return ast.TypeInt
+	}
 
 	if tc.isNumericType(resLeft) && tc.isNumericType(resRight) {
-		if tc.isFloatType(resLeft) || tc.isFloatType(resRight) { return ast.TypeFloat }
-		if tc.getSizeof(resLeft) > tc.getSizeof(resRight) { return resLeft }
+		if tc.isFloatType(resLeft) || tc.isFloatType(resRight) {
+			// If both operands are float types, return the more precise one
+			if tc.isFloatType(resLeft) && tc.isFloatType(resRight) {
+				if tc.areTypesEqual(resLeft, resRight) {
+					return resLeft // Both same float type, preserve it
+				}
+				// Different float types, promote to the larger one
+				if tc.getSizeof(resLeft) > tc.getSizeof(resRight) {
+					return resLeft
+				}
+				return resRight
+			}
+			// One float, one integer - return the float type (not machine float)
+			if tc.isFloatType(resLeft) {
+				return resLeft
+			}
+			return resRight
+		}
+		if tc.getSizeof(resLeft) > tc.getSizeof(resRight) {
+			return resLeft
+		}
 		return resRight
 	}
 
 	if op == token.Plus || op == token.Minus {
-		if resLeft.Kind == ast.TYPE_POINTER && tc.isIntegerType(resRight) { return resLeft }
-		if tc.isIntegerType(resLeft) && resRight.Kind == ast.TYPE_POINTER && op == token.Plus { return resRight }
-		if op == token.Minus && resLeft.Kind == ast.TYPE_POINTER && resRight.Kind == ast.TYPE_POINTER { return ast.TypeInt }
+		if resLeft.Kind == ast.TYPE_POINTER && tc.isIntegerType(resRight) {
+			return resLeft
+		}
+		if tc.isIntegerType(resLeft) && resRight.Kind == ast.TYPE_POINTER && op == token.Plus {
+			return resRight
+		}
+		if op == token.Minus && resLeft.Kind == ast.TYPE_POINTER && resRight.Kind == ast.TYPE_POINTER {
+			return ast.TypeInt
+		}
+		// Allow string concatenation: byte* + byte* -> byte* (for Plus operation only)
+		if op == token.Plus && resLeft.Kind == ast.TYPE_POINTER && resRight.Kind == ast.TYPE_POINTER &&
+			resLeft.Base != nil && resRight.Base != nil &&
+			resLeft.Base.Kind == ast.TYPE_PRIMITIVE && resLeft.Base.Name == "byte" &&
+			resRight.Base.Kind == ast.TYPE_PRIMITIVE && resRight.Base.Name == "byte" {
+			return resLeft
+		}
 	}
 
-	tc.typeErrorOrWarn(tok, "Invalid binary operation between types '%s' and '%s'", typeToString(left), typeToString(right))
+	tc.typeErrorOrWarn(tok, "Invalid binary operation between types '%s' and '%s'", ast.TypeToString(left), ast.TypeToString(right))
 	return ast.TypeInt
 }
 
 func (tc *TypeChecker) areTypesCompatible(a, b *ast.BxType, bNode *ast.Node) bool {
-	if a == nil || b == nil || a.Kind == ast.TYPE_UNTYPED { return true }
+	if a == nil || b == nil || a.Kind == ast.TYPE_UNTYPED {
+		return true
+	}
 
-	if b.Kind == ast.TYPE_UNTYPED_INT { return tc.isNumericType(a) || a.Kind == ast.TYPE_POINTER || a.Kind == ast.TYPE_BOOL }
-	if b.Kind == ast.TYPE_UNTYPED_FLOAT { return tc.isFloatType(a) }
-	if b.Kind == ast.TYPE_UNTYPED { return true }
+	if b.Kind == ast.TYPE_LITERAL_INT {
+		return tc.isNumericType(a) || a.Kind == ast.TYPE_POINTER || a.Kind == ast.TYPE_BOOL
+	}
+	if b.Kind == ast.TYPE_LITERAL_FLOAT {
+		return tc.isFloatType(a)
+	}
+	if b.Kind == ast.TYPE_UNTYPED {
+		return true
+	}
 
 	resA, resB := tc.resolveType(a), tc.resolveType(b)
 
-	if resA.Kind == ast.TYPE_POINTER && tc.isIntegerType(resB) { return true }
-	if tc.isIntegerType(resA) && resB.Kind == ast.TYPE_POINTER { return true }
+	if resA.Kind == ast.TYPE_POINTER && tc.isIntegerType(resB) {
+		return true
+	}
+	if tc.isIntegerType(resA) && resB.Kind == ast.TYPE_POINTER {
+		return true
+	}
 
-	if resA.Kind == ast.TYPE_NIL { return resB.Kind == ast.TYPE_POINTER || resB.Kind == ast.TYPE_ARRAY || resB.Kind == ast.TYPE_NIL }
-	if resB.Kind == ast.TYPE_NIL { return resA.Kind == ast.TYPE_POINTER || resA.Kind == ast.TYPE_ARRAY }
+	if resA.Kind == ast.TYPE_NIL {
+		return resB.Kind == ast.TYPE_POINTER || resB.Kind == ast.TYPE_ARRAY || resB.Kind == ast.TYPE_NIL
+	}
+	if resB.Kind == ast.TYPE_NIL {
+		return resA.Kind == ast.TYPE_POINTER || resA.Kind == ast.TYPE_ARRAY
+	}
 
 	if resA.Kind == resB.Kind {
 		switch resA.Kind {
 		case ast.TYPE_POINTER:
-			if (resA.Base != nil && resA.Base.Kind == ast.TYPE_VOID) || (resB.Base != nil && resB.Base.Kind == ast.TYPE_VOID) { return true }
-			if (resA.Base != nil && resA.Base == ast.TypeByte) || (resB.Base != nil && resB.Base == ast.TypeByte) { return true }
+			if (resA.Base != nil && resA.Base.Kind == ast.TYPE_VOID) || (resB.Base != nil && resB.Base.Kind == ast.TYPE_VOID) {
+				return true
+			}
+			if (resA.Base != nil && resA.Base == ast.TypeByte) || (resB.Base != nil && resB.Base == ast.TypeByte) {
+				return true
+			}
 			return tc.areTypesCompatible(resA.Base, resB.Base, nil)
 		case ast.TYPE_ARRAY:
 			return tc.areTypesCompatible(resA.Base, resB.Base, nil)
@@ -891,18 +1284,32 @@ func (tc *TypeChecker) areTypesCompatible(a, b *ast.BxType, bNode *ast.Node) boo
 			return true
 		}
 	}
-	if bNode != nil && bNode.Type == ast.Number && bNode.Data.(ast.NumberNode).Value == 0 && resA.Kind == ast.TYPE_POINTER && tc.isIntegerType(resB) { return true }
-	if resA.Kind == ast.TYPE_POINTER && resB.Kind == ast.TYPE_ARRAY { return tc.areTypesCompatible(resA.Base, resB.Base, nil) }
-	if (resA.Kind == ast.TYPE_ENUM && tc.isIntegerType(resB)) || (tc.isIntegerType(resA) && resB.Kind == ast.TYPE_ENUM) { return true }
-	if tc.isNumericType(resA) && tc.isNumericType(resB) { return true }
-	if (resA.Kind == ast.TYPE_BOOL && tc.isScalarType(resB)) || (tc.isScalarType(resA) && resB.Kind == ast.TYPE_BOOL) { return true }
+	if bNode != nil && bNode.Type == ast.Number && bNode.Data.(ast.NumberNode).Value == 0 && resA.Kind == ast.TYPE_POINTER && tc.isIntegerType(resB) {
+		return true
+	}
+	if resA.Kind == ast.TYPE_POINTER && resB.Kind == ast.TYPE_ARRAY {
+		return tc.areTypesCompatible(resA.Base, resB.Base, nil)
+	}
+	if (resA.Kind == ast.TYPE_ENUM && tc.isIntegerType(resB)) || (tc.isIntegerType(resA) && resB.Kind == ast.TYPE_ENUM) {
+		return true
+	}
+	if tc.isNumericType(resA) && tc.isNumericType(resB) {
+		return true
+	}
+	if (resA.Kind == ast.TYPE_BOOL && tc.isScalarType(resB)) || (tc.isScalarType(resA) && resB.Kind == ast.TYPE_BOOL) {
+		return true
+	}
 	return false
 }
 
 func (tc *TypeChecker) areTypesEqual(a, b *ast.BxType) bool {
-	if a == nil || b == nil { return a == b }
+	if a == nil || b == nil {
+		return a == b
+	}
 	resA, resB := tc.resolveType(a), tc.resolveType(b)
-	if resA.Kind != resB.Kind { return false }
+	if resA.Kind != resB.Kind {
+		return false
+	}
 	switch resA.Kind {
 	case ast.TYPE_POINTER, ast.TYPE_ARRAY:
 		return tc.areTypesEqual(resA.Base, resB.Base)
@@ -935,13 +1342,13 @@ func (tc *TypeChecker) resolveType(typ *ast.BxType) *ast.BxType {
 func (tc *TypeChecker) isIntegerType(t *ast.BxType) bool {
 	if t == nil { return false }
 	resolved := tc.resolveType(t)
-	return resolved.Kind == ast.TYPE_PRIMITIVE || resolved.Kind == ast.TYPE_UNTYPED_INT
+	return resolved.Kind == ast.TYPE_PRIMITIVE || resolved.Kind == ast.TYPE_LITERAL_INT || resolved.Kind == ast.TYPE_UNTYPED || resolved.Kind == ast.TYPE_ENUM
 }
 
 func (tc *TypeChecker) isFloatType(t *ast.BxType) bool {
 	if t == nil { return false }
 	resolved := tc.resolveType(t)
-	return resolved.Kind == ast.TYPE_FLOAT || resolved.Kind == ast.TYPE_UNTYPED_FLOAT
+	return resolved.Kind == ast.TYPE_FLOAT || resolved.Kind == ast.TYPE_LITERAL_FLOAT
 }
 
 func (tc *TypeChecker) isNumericType(t *ast.BxType) bool {
@@ -951,45 +1358,4 @@ func (tc *TypeChecker) isScalarType(t *ast.BxType) bool {
 	if t == nil { return false }
 	resolved := tc.resolveType(t)
 	return tc.isNumericType(resolved) || resolved.Kind == ast.TYPE_POINTER || resolved.Kind == ast.TYPE_BOOL
-}
-
-func typeToString(t *ast.BxType) string {
-	if t == nil { return "<nil>" }
-	var sb strings.Builder
-	if t.IsConst { sb.WriteString("const ") }
-	switch t.Kind {
-	case ast.TYPE_PRIMITIVE, ast.TYPE_BOOL, ast.TYPE_FLOAT, ast.TYPE_UNTYPED_INT, ast.TYPE_UNTYPED_FLOAT:
-		sb.WriteString(t.Name)
-	case ast.TYPE_POINTER:
-		sb.WriteString(typeToString(t.Base))
-		sb.WriteString("*")
-	case ast.TYPE_ARRAY:
-		sb.WriteString("[]")
-		sb.WriteString(typeToString(t.Base))
-	case ast.TYPE_STRUCT:
-		sb.WriteString("struct ")
-		if t.Name != "" {
-			sb.WriteString(t.Name)
-		} else if t.StructTag != "" {
-			sb.WriteString(t.StructTag)
-		} else {
-			sb.WriteString("<anonymous>")
-		}
-	case ast.TYPE_ENUM:
-		sb.WriteString("enum ")
-		if t.Name != "" {
-			sb.WriteString(t.Name)
-		} else {
-			sb.WriteString("<anonymous>")
-		}
-	case ast.TYPE_VOID:
-		sb.WriteString("void")
-	case ast.TYPE_UNTYPED:
-		sb.WriteString("untyped")
-	case ast.TYPE_NIL:
-		sb.WriteString("nil")
-	default:
-		sb.WriteString(fmt.Sprintf("<unknown_type_kind_%d>", t.Kind))
-	}
-	return sb.String()
 }

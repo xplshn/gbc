@@ -66,7 +66,7 @@ This compiler is a project aiming to make a valid B compiler, with _optional_ sy
         type                                           Warn about type mismatches in expressions and assignments.          |x|
         u-esc                                          Warn on unrecognized character escape sequences.                    |x|
         unreachable-code                               Warn about code that will never be executed.                        |x|
-]~/Documents/TrulyMine/gbc@ 
+]~/Documents/TrulyMine/gbc@
 ```
 
 ### Progress Report:
@@ -74,7 +74,10 @@ This compiler is a project aiming to make a valid B compiler, with _optional_ sy
 - Capable of compiling all examples. Producing the same output as the reference B compiler, against the same STDIN and argument inputs.
 - Etc, these are just the most impressive examples
 - I added a completely opt-in type system. It uses type first declarations like C, and uses the Go type names. (can also be used with strict B via `-std=B -Ftyped`, the syntax is backwards compatible. Its so reliable it comes enabled by default.)
-- `gbc` will warn about poorly written code. TODO: Convert these warnings into annotations that offer suggestions.
+- `gbc`'s warnings warn against common errors, poor decisions, etc
+- Directives are supported
+- Meta-programming: W.I.P
+- Borrow-checking: Working on that!!! Will probably be the last feature of GBC once the most essential stuff is addressed
 - Portable and with multiple backends:
   - QBE (default, via modernc.org/libQBE, a pure Go version of QBE)
   - LLVM (via `llc`)
@@ -99,8 +102,8 @@ The project is currently in its infancy, and the long-term goals are very ambiti
 > 1. ~~Support the "extrn" keyword, as well as inline assembly~~
 > 2. ~~Use the same warning & error messages [tsoding/b](https://github.com/tsoding/b)~~ / our warnings n errors are much better
 > 3. ~~Be able to pass the IR tests of [tsoding/b](https://github.com/tsoding/b)~~
-> 4. A gameboy color target once _all_ examples can be compiled and work as expected
-> 
+> 4. A gameboy color target once _all_ examples can be compiled and work as expected (WIP)
+>
 > ###### (iii) Packages / Modules inspired by Go
 > * ¿.. Namespaces based on .mod file ..?
 > * Implement a way to import/export symbols from different .B files, in different namespaces

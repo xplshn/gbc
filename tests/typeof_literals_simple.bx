@@ -1,0 +1,74 @@
+// Tests for typeof with struct literals and simple expressions
+extrn printf;
+
+type struct Point {
+    x int;
+    y int;
+};
+
+type struct FloatPoint {
+    x float32;
+    y float32;
+};
+
+void testStructLiterals() {
+    printf("=== Struct Literal Types ===\n");
+    
+    // Named struct literals
+    auto p1 = Point{x: 10, y: 20};
+    printf("Point literal: %s\n", typeof(p1));
+    
+    auto p2 = Point{5, 15};
+    printf("Point positional literal: %s\n", typeof(p2));
+    
+    auto fp = FloatPoint{x: 1.5, y: 2.5};
+    printf("FloatPoint literal: %s\n", typeof(fp));
+    
+    // Nested struct access
+    printf("Point member x: %s\n", typeof(p1.x));
+    printf("FloatPoint member x: %s\n", typeof(fp.x));
+}
+
+void testLiteralAssignment() {
+    printf("\n=== Literal Assignment Context ===\n");
+    
+    // Assign struct literal to typed variable
+    Point p;
+    p = Point{x: 100, y: 200};
+    printf("Assigned struct: %s\n", typeof(p));
+    
+    // Simple array assignments
+    int numbers[3];
+    numbers[0] = 1;
+    numbers[1] = 2;
+    numbers[2] = 3;
+    printf("Assigned array: %s\n", typeof(numbers));
+    printf("Array element: %s\n", typeof(numbers[0]));
+}
+
+void testMixedExpressions() {
+    printf("\n=== Mixed Expressions ===\n");
+    
+    auto int_val = 42;
+    auto float_val = 3.14;
+    
+    // Arithmetic with same types
+    printf("int + int: %s\n", typeof(int_val + int_val));
+    printf("float + float: %s\n", typeof(float_val + float_val));
+    
+    // Mixed arithmetic (should promote to float)
+    printf("int + float: %s\n", typeof(int_val + float_val));
+    printf("float * int: %s\n", typeof(float_val * int_val));
+    
+    // Comparison operations
+    printf("int == int: %s\n", typeof(int_val == int_val));
+    printf("float > int: %s\n", typeof(float_val > int_val));
+}
+
+main() {
+    testStructLiterals();
+    testLiteralAssignment();
+    testMixedExpressions();
+    
+    return(0);
+}

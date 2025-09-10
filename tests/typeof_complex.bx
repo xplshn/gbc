@@ -1,0 +1,120 @@
+// Tests for typeof with pointers, arrays, and structs
+extrn printf;
+
+type struct Point {
+    x int;
+    y int;
+};
+
+type struct FloatPoint {
+    x float32;
+    y float32;
+};
+
+type enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+void testPointers() {
+    printf("=== Pointer Types ===\n");
+    
+    int value;
+    value = 42;
+    printf("int value: %s\n", typeof(value));
+    
+    auto ptr = &value;
+    printf("int pointer: %s\n", typeof(ptr));
+    
+    auto deref = *ptr;
+    printf("dereferenced: %s\n", typeof(deref));
+    
+    // Different pointer types
+    float32 float_val;
+    float_val = 3.14;
+    auto float_ptr = &float_val;
+    printf("float32 pointer: %s\n", typeof(float_ptr));
+}
+
+void testArrays() {
+    printf("\n=== Array Types ===\n");
+    
+    int int_array[5];
+    printf("int array: %s\n", typeof(int_array));
+    
+    float32 float_array[3];
+    printf("float32 array: %s\n", typeof(float_array));
+    
+    // Array element access
+    int_array[0] = 10;
+    printf("array element: %s\n", typeof(int_array[0]));
+    
+    float_array[0] = 1.5;
+    printf("float array element: %s\n", typeof(float_array[0]));
+}
+
+void testStructs() {
+    printf("\n=== Struct Types ===\n");
+    
+    Point p;
+    printf("Point struct: %s\n", typeof(p));
+    
+    p.x = 10;
+    p.y = 20;
+    printf("struct member x: %s\n", typeof(p.x));
+    printf("struct member y: %s\n", typeof(p.y));
+    
+    FloatPoint fp;
+    fp.x = 1.5;
+    fp.y = 2.5;
+    printf("FloatPoint struct: %s\n", typeof(fp));
+    printf("float struct member: %s\n", typeof(fp.x));
+    
+    // Struct pointer
+    auto struct_ptr = &p;
+    printf("struct pointer: %s\n", typeof(struct_ptr));
+}
+
+void testEnums() {
+    printf("\n=== Enum Types ===\n");
+    
+    Color color;
+    color = RED;
+    printf("enum Color: %s\n", typeof(color));
+    
+    auto enum_val = BLUE;
+    printf("enum value: %s\n", typeof(enum_val));
+}
+
+void testComplexExpressions() {
+    printf("\n=== Complex Expressions ===\n");
+    
+    auto a = 10;
+    auto b = 20;
+    
+    // Arithmetic expressions
+    printf("a + b: %s\n", typeof(a + b));
+    printf("a * b: %s\n", typeof(a * b));
+    
+    auto x = 1.5;
+    auto y = 2.5;
+    printf("x + y: %s\n", typeof(x + y));
+    
+    // Mixed type expressions
+    printf("a + x: %s\n", typeof(a + x));
+    
+    // Comparison expressions
+    printf("a > b: %s\n", typeof(a > b));
+    printf("x < y: %s\n", typeof(x < y));
+}
+
+main() {
+    testPointers();
+    testArrays();
+    testStructs();
+    testEnums();
+    testComplexExpressions();
+    
+    return(0);
+}

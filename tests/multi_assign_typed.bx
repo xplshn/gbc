@@ -1,0 +1,32 @@
+// Test multi-assignment functionality with Bx typed syntax
+assert_equal(actual, expected, message) {
+    extrn printf, abort;
+    printf("%s: ", message);
+    if (actual != expected) {
+        printf("FAIL\n");
+        abort();
+    } else {
+        printf("OK\n");
+    }
+}
+
+main() {
+    extrn assert_equal;
+    
+    // Test with typed variables and arrays (Bx style)
+    int int_array[3];
+    int other_array[3];
+    
+    int_array[0], other_array[0] = 42, 84;
+    int_array[1], other_array[1] = 123, 246;
+    int_array[2], other_array[2] = 999, 1998;
+    
+    assert_equal(int_array[0], 42, "int_array[0], other_array[0] = 42, 84; int_array[0] == 42");
+    assert_equal(other_array[0], 84, "int_array[0], other_array[0] = 42, 84; other_array[0] == 84");
+    assert_equal(int_array[1], 123, "int_array[1], other_array[1] = 123, 246; int_array[1] == 123");
+    assert_equal(other_array[1], 246, "int_array[1], other_array[1] = 123, 246; other_array[1] == 246");
+    assert_equal(int_array[2], 999, "int_array[2], other_array[2] = 999, 1998; int_array[2] == 999");
+    assert_equal(other_array[2], 1998, "int_array[2], other_array[2] = 999, 1998; other_array[2] == 1998");
+    
+    return(0);
+}

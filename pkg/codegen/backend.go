@@ -9,4 +9,5 @@ import (
 // Backend is an interface for code generation backends
 type Backend interface {
 	Generate(prog *ir.Program, cfg *config.Config) (*bytes.Buffer, error)
+	GenerateIR(prog *ir.Program, cfg *config.Config) (string, error)
 }

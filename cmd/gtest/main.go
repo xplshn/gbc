@@ -34,9 +34,9 @@ type Execution struct {
 }
 
 type TestRun struct {
-	Name   string   `json:"name"`
-	Args   []string `json:"args,omitempty"`
-	Input  string   `json:"input,omitempty"`
+	Name   string    `json:"name"`
+	Args   []string  `json:"args,omitempty"`
+	Input  string    `json:"input,omitempty"`
 	Result Execution `json:"result"`
 }
 
@@ -109,7 +109,7 @@ func main() {
 	handleRunTestSuite(tempDir)
 }
 
-// setupInterruptHandler is used to clean up on CTRL+C
+// Cleanup on Ctrl+C
 func setupInterruptHandler(tempDir string) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -129,7 +129,7 @@ func getJSONPath(sourceFile string) string {
 	return filepath.Join(filepath.Dir(sourceFile), jsonFileName)
 }
 
-// hashFile computes the xxhash of a file's content
+// Fast hash of file contents
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -191,7 +191,7 @@ func handleRunTestSuite(tempDir string) {
 		return
 	}
 
-	// Load previous results for caching reference compiler output
+	// Check if there's cached results to speed things up
 	previousResults := make(TestSuiteResults)
 	outputFile := *outputJSON
 	if *jsonDir != "" {
@@ -481,7 +481,7 @@ func compareRuntimeResults(file string, refResult, targetResult *TargetResult) *
 	}
 }
 
-// executeCommand runs a command with a timeout and captures its output, optionally piping data to stdin
+// Run a command with timeout, capturing output and optionally feeding stdin
 func executeCommand(ctx context.Context, command string, stdinData string, args ...string) Execution {
 	startTime := time.Now()
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -539,8 +539,7 @@ func compileAndRun(compiler string, compilerArgs []string, sourceFile, tempDir, 
 		return &TargetResult{Compile: compileResult}, fmt.Errorf("compilation succeeded but binary was not created at %s", binaryPath)
 	}
 
-	// Probe to see if the binary waits for stdin by running it with a very short timeout
-	// If it times out, it's likely waiting for input
+	// Quick test: does this program expect stdin?
 	probeCtx, probeCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer probeCancel()
 	probeResult := executeCommand(probeCtx, binaryPath, "")
@@ -631,7 +630,7 @@ func compileAndRun(compiler string, compilerArgs []string, sourceFile, tempDir, 
 	return &TargetResult{Compile: compileResult, Runs: runResults, BinaryPath: binaryPath}, nil
 }
 
-// filterOutput removes lines containing any of the given substrings
+// Remove lines containing any of these substrings
 func filterOutput(output string, ignoredSubstrings []string) string {
 	if len(ignoredSubstrings) == 0 || output == "" {
 		return output

@@ -1,0 +1,19 @@
+type int Age;
+extrn printf;
+
+asOf := "29/08/2025";
+
+Age getAge() {
+    return (Age(16));
+}
+
+main() {
+    auto myAge = getAge();
+    printf("%d\n", int(myAge));
+
+    if (myAge / 16 == 1) {
+        printf("Yes, but only as of %s\n", asOf);
+    }
+
+    return(0);
+}

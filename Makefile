@@ -39,7 +39,7 @@ $(GTEST):
 
 clean:
 	@echo "Cleaning up..."
-	@rm -f $(OUT) $(GTEST) ./a.out .test_results.json
+	@rm -f $(OUT) $(GTEST) ./gbc ./cmd/gtest/gtest ./a.out ./.test_results.json
 
 ARCH := $(shell uname -m)
 OS := $(shell uname -s)
@@ -62,7 +62,7 @@ endef
 test: all $(GTEST)
 	@echo "Running tests..."
 	@files=$$( $(call filter_files,tests/*.b*,tests) ); \
-	./cmd/$(GTEST)/$(GTEST) --test-files="$$files" --target-args="$(GBCFLAGS) $(LIBB)" -v
+	./cmd/$(GTEST)/$(GTEST) --test-files="$$files" --target-args="$(GBCFLAGS) $(LIBB)" -v --ignore-lines="addresses"
 
 examples: all $(GTEST)
 	@echo "Running examples..."

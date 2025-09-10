@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-3071180605/9d8ad77165eb1aae",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-3071180605/9d8ad77165eb1aae'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\n",
+    "exitCode": 0,
+    "duration": 28132582,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 451734,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 425538,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 505366,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 365692,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 357893,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 368369,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 379346,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 367333,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "--- Testing Integer Switch ---\nx is two or three\nInteger test passed.\n\n--- Testing Float Operations ---\nFloat multiplication successful: 3.140000 * 2.710000 = 8.509400\nFloat division successful: 3.140000 / 2.0 = 1.570000\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 377177,
+        "timed_out": false
+      }
+    }
+  ]
+}

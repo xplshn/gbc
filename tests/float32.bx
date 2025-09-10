@@ -1,0 +1,15 @@
+extrn printf;
+
+int main() {
+   float32 x, y;
+   x = 1.25;
+   y = 2.75;
+   printf("x = %.3f, y = %.3f\n", x, y);
+   float a, b;
+   a = 8.50;
+   b = 7.50;
+   printf("a = %.3f, b = %.3f\n", a, b);
+   // X and Y once again
+   printf("x = %.3f, y = %.3f\n", x, y);
+   return (0);
+}

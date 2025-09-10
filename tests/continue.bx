@@ -1,0 +1,12 @@
+main() {
+    extrn printf;
+    auto i = 0;
+    while (i < 5) {
+        i++;
+        if (i == 3) {
+            continue;
+        }
+        printf("%d\n", i); // 1, 2, 4, 5
+    }
+    return(0);
+}

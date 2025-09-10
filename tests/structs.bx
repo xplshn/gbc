@@ -1,0 +1,55 @@
+type struct Point {
+    x, y int;
+};
+
+type struct Vector {
+    x int;
+    y int;
+//    z float32;
+};
+
+type struct S {
+    a float32;
+    b float32;
+    c float32;
+    z int;
+};
+
+// Was expecting a failure here due to trying to use positional struct literal return even tho there are more than one kind of type in the struct type
+Vector createVector(x, y int) {
+    //return (Vector{x, y, 0});
+    return (Vector{x, y});
+}
+
+S createS(a, b, c float32, z int) {
+    return (S{a: a, b: b, c: c, z: z});
+}
+
+main() {
+    extrn printf;
+
+    auto p = Point{x: 10, y: 20};
+    printf("p.x: %d\n", p.x);
+    printf("p.y: %d\n", p.y);
+
+    auto p2 = Point{2, 4};
+    printf("p2.x: %d\n", p2.x);
+    printf("p2.y: %d\n", p2.y);
+
+    auto v = Vector{16, 32};
+    printf("v.x: %d\n", v.x);
+    printf("v.y: %d\n", v.y);
+
+    auto v2 = createVector(5, 10);
+    printf("v2.x: %d\n", v2.x);
+    printf("v2.y: %d\n", v2.y);
+
+    auto s = createS(0.1, 0.2, 0.3, 50);
+    printf("s.a: %f\n", s.a);
+    printf("s.b: %f\n", s.b);
+    printf("s.c: %f\n", s.c);
+    printf("s.z: %d\n", s.z);
+
+    return(0);
+}
+

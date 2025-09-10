@@ -1,0 +1,49 @@
+// Tests case statements with integers and floats, using extrn sprintf and printf.
+
+extrn sprintf, printf;
+
+main() {
+    auto buffer 100;
+    auto x = 2;
+    auto y = 3.14;
+    auto z = 2.71;
+
+    // --- Integer Test ---
+    printf("--- Testing Integer Switch ---\n");
+    switch (x) {
+        case 1:
+            printf("x is one\n");
+            break;
+        case 2, 3:
+            printf("x is two or three\n");
+            break;
+        default:
+            printf("x is something else\n");
+    }
+    printf("Integer test passed.\n\n");
+
+    // --- Float Test ---
+    printf("--- Testing Float Operations ---\n");
+    auto result = y * z; // 3.14 * 2.71 = 8.5094
+
+    // We can't switch on floats, so we'll use if/else to check the result
+    // and sprintf/printf to verify the value.
+    if (result > 8.5 && result < 8.51) {
+        sprintf(buffer, "Float multiplication successful: %f * %f = %f\n", y, z, result);
+        printf(buffer);
+    } else {
+        sprintf(buffer, "Float multiplication failed: %f * %f = %f\n", y, z, result);
+        printf(buffer);
+    }
+
+    auto div_res = y / 2.0; // 3.14 / 2.0 = 1.57
+    if (div_res > 1.56 && div_res < 1.58) {
+        sprintf(buffer, "Float division successful: %f / 2.0 = %f\n", y, div_res);
+        printf(buffer);
+    } else {
+        sprintf(buffer, "Float division failed: %f / 2.0 = %f\n", y, div_res);
+        printf(buffer);
+    }
+
+    return(0);
+}

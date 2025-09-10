@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-2304730691/8c546ccb220f26ce",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-2304730691/8c546ccb220f26ce'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\nedge.bx:12:13: \u001b[33mwarning\u001b[0m:\n \u001b[90m   11 | \u001b[0m    auto o = Outer{inner: \u0026i};\n \u001b[1;90m   12 | \u001b[0m    return (\u0026o);\n    \u001b[1;90m-- | \u001b[0m\u001b[33m            ^\u001b[0m \u001b[3mReturning address of local variable 'o' [-Wlocal-address]\u001b[0m \u001b[3m\u001b[90m(emitted from \u001b[1;90mtypeChecker.go\u001b[0m)\u001b[0m\u001b[0m\u001b[0m\n \u001b[90m   13 | \u001b[0m}\n\n",
+    "exitCode": 0,
+    "duration": 30136840,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 360917,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 474129,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 363644,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 363372,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 744252,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 417811,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 452356,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 370682,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 367562,
+        "timed_out": false
+      }
+    }
+  ]
+}

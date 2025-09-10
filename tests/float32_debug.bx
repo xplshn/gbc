@@ -1,0 +1,14 @@
+extrn printf;
+
+int main() {
+   float32 x, y, z;
+   x = 1.25;
+   y = 2.75;
+   printf("x type: %s\n", typeof(x));
+   printf("y type: %s\n", typeof(y));
+   printf("x + y type: %s\n", typeof(x + y));
+   z = x + y;
+   printf("z type: %s\n", typeof(z));
+   printf("z = %.3f\n", z);
+   return (0);
+}

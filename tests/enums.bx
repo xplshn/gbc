@@ -1,0 +1,16 @@
+// Tests enums
+type enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+main() {
+    extrn puts;
+
+    auto myColor = GREEN;
+    if (myColor == GREEN) {
+        puts("The color is green");
+    }
+    return(0);
+}

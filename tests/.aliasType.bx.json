@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-2081473483/5ebe214e4a711db7",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-2081473483/5ebe214e4a711db7'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\n",
+    "exitCode": 0,
+    "duration": 26519162,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 452024,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 389159,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 343399,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 316167,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 310804,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 307158,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 308048,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 306906,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "16\nYes, but only as of 29/08/2025\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 309619,
+        "timed_out": false
+      }
+    }
+  ]
+}

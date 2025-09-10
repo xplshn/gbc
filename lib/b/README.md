@@ -1,6 +1,6 @@
 # libb - The Standard Library of B
 
-Here we describe the bare minium of the functionality that libb must provide. It may provide more on some platforms if necessary.
+Here we describe the bare minimum functionality that libb must provide. It may provide more on some platforms if necessary.
 
 Some platforms like `gas-x86_64-linux`, `gas-aarch64-linux`, etc also link with libc, which means some of the functionality of libb is covered by libc. For platforms that do not link with libc (like `uxn`, `6502`, etc) the required functionality should be implemented from scratch.
 
@@ -10,7 +10,7 @@ If you don't want to link with libb (and libc on the platforms where it's availa
 
 Loosely based on `8.0 Library Functions` from [kbman][kbman]. May contain additional historically inaccurate things.
 
-<!-- TODO: document the main(argc, argv) functionality that is provided by libb -->
+Note: `main(argc, argv)` functionality is provided by libb but not documented yet.
 
 | Signature                    | Description                                                                                                      |
 |------------------------------|------------------------------------------------------------------------------------------------------------------|

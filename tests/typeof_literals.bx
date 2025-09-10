@@ -1,0 +1,95 @@
+// Tests for typeof with array and struct literals
+extrn printf;
+
+type struct Point {
+    x int;
+    y int;
+};
+
+type struct FloatPoint {
+    x float32;
+    y float32;
+};
+
+void testStructLiterals() {
+    printf("=== Struct Literal Types ===\n");
+    
+    // Named struct literals
+    auto p1 = Point{x: 10, y: 20};
+    printf("Point literal: %s\n", typeof(p1));
+    
+    auto p2 = Point{5, 15};
+    printf("Point positional literal: %s\n", typeof(p2));
+    
+    auto fp = FloatPoint{x: 1.5, y: 2.5};
+    printf("FloatPoint literal: %s\n", typeof(fp));
+    
+    // Nested struct access
+    printf("Point member x: %s\n", typeof(p1.x));
+    printf("FloatPoint member x: %s\n", typeof(fp.x));
+}
+
+void testArrayLiterals() {
+    printf("\n=== Array Literal Types ===\n");
+    
+    // Array literals with explicit types
+    auto int_arr = []int{1, 2, 3, 4, 5};
+    printf("int array literal: %s\n", typeof(int_arr));
+    
+    auto float_arr = []float32{1.1, 2.2, 3.3};
+    printf("float32 array literal: %s\n", typeof(float_arr));
+    
+    auto str_arr = []string{"hello", "world"};
+    printf("string array literal: %s\n", typeof(str_arr));
+    
+    // Array element access
+    printf("int array element: %s\n", typeof(int_arr[0]));
+    printf("float array element: %s\n", typeof(float_arr[0]));
+    printf("string array element: %s\n", typeof(str_arr[0]));
+}
+
+void testMixedLiterals() {
+    printf("\n=== Mixed Literal Expressions ===\n");
+    
+    // Struct with array
+    auto points = []Point{
+        Point{x: 1, y: 2},
+        Point{x: 3, y: 4}
+    };
+    printf("Point array: %s\n", typeof(points));
+    printf("Point array element: %s\n", typeof(points[0]));
+    
+    // Array in function call context
+    testArray([]float32{1.0, 2.0, 3.0});
+}
+
+void testArray(float32 arr[]) {
+    printf("Function array param: %s\n", typeof(arr));
+    printf("Function array element: %s\n", typeof(arr[0]));
+}
+
+void testLiteralAssignment() {
+    printf("\n=== Literal Assignment Context ===\n");
+    
+    // Assign struct literal to typed variable
+    Point p;
+    p = Point{x: 100, y: 200};
+    printf("Assigned struct: %s\n", typeof(p));
+    
+    // Assign array literal to typed variable  
+    int numbers[3];
+    // Note: Direct array literal assignment may not be supported
+    numbers[0] = 1;
+    numbers[1] = 2;
+    numbers[2] = 3;
+    printf("Assigned array: %s\n", typeof(numbers));
+}
+
+main() {
+    testStructLiterals();
+    testArrayLiterals();
+    testMixedLiterals();
+    testLiteralAssignment();
+    
+    return(0);
+}

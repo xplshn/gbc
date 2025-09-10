@@ -1,0 +1,8 @@
+extrn printf;
+main() {
+    printf("[%.3f, %.3f, %.3f]\n", 1.25, 2.75, 3.125);
+    printf("[%s, %s, %s]\n", typeof(1.25), typeof(2.75), typeof(3.125));
+    printf("[float32(%.3f), float32(%.3f), float32(%.3f)]\n", float32(1.25), float32(2.75), float32(3.125));
+    printf("[%s, %s, %s]\n", typeof(float32(1.25)), typeof(float32(2.75)), typeof(float32(3.125)));
+}
+

@@ -1,0 +1,50 @@
+extrn printf;
+
+type enum TrafficLight {
+	RED,
+	YELLOW,
+	GREEN
+};
+
+TrafficLight get_next_light(current_light TrafficLight) {
+	if (int(current_light) == GREEN) {
+		return (YELLOW);
+	}
+	if (int(current_light) == YELLOW) {
+		return (RED);
+	}
+	return (GREEN);
+}
+
+void print_action(light TrafficLight) {
+	switch (light) {
+	case RED:
+		printf("Light is RED. Action: Stop.\n");
+		break;
+	case YELLOW:
+		printf("Light is YELLOW. Action: Caution.\n");
+		break;
+	case GREEN:
+		printf("Light is GREEN. Action: Go.\n");
+		break;
+	default:
+		printf("Unknown light state.\n");
+	}
+}
+
+int main() {
+	auto current_light = RED;
+
+	print_action(current_light);
+
+	current_light = get_next_light(current_light);
+	print_action(current_light);
+
+	current_light = get_next_light(current_light);
+	print_action(current_light);
+
+	current_light = get_next_light(current_light);
+	print_action(current_light);
+
+	return (0);
+}

@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-1458024948/bd7199957ef6b659",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-1458024948/bd7199957ef6b659'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\n",
+    "exitCode": 0,
+    "duration": 23850949,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 328908,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 312441,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 334080,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 629697,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 332966,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 494432,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 315225,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 306996,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "Function-style casts: a=42, int(a)=42, (int(a)+1)=43\nPointer casts work: value=42\nn1(int8) : 8\nn2(int16): 16\nn3(int32): 32\nn4(int64): 64\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 323001,
+        "timed_out": false
+      }
+    }
+  ]
+}

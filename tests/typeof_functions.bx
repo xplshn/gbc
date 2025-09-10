@@ -1,0 +1,53 @@
+// Tests for typeof in function parameter contexts
+extrn printf;
+
+// Test function with various parameter types
+void testFunc(i int, f32 float32, u8 uint8, f64 float64) {
+    printf("In testFunc:\n");
+    printf("  param int: %s\n", typeof(i));
+    printf("  param float32: %s\n", typeof(f32));
+    printf("  param uint8: %s\n", typeof(u8)); 
+    printf("  param float64: %s\n", typeof(f64));
+}
+
+// Test function calls with literals - verify type coercion
+void testLiteralCoercion() {
+    printf("\n=== Function Parameter Type Coercion ===\n");
+    
+    // Call with literals - should get coerced to parameter types
+    testFunc(42, 3.14, 255, 2.718);
+    
+    // Test in assignment context
+    printf("\n=== Assignment Context ===\n");
+    
+    float32 assigned_literal;
+    assigned_literal = 0.5;  // literal float should be coerced to float32
+    printf("assigned literal to float32: %s\n", typeof(assigned_literal));
+    
+    int32 assigned_int;  
+    assigned_int = 100;  // literal int should be coerced to int32
+    printf("assigned literal to int32: %s\n", typeof(assigned_int));
+}
+
+// Test return types
+float32 returnFloat32() {
+    return (2.5);  // literal should be coerced to float32
+}
+
+int16 returnInt16() {
+    return (42);  // literal should be coerced to int16  
+}
+
+main() {
+    testLiteralCoercion();
+    
+    printf("\n=== Return Type Context ===\n");
+    
+    auto ret_f32 = returnFloat32();
+    printf("returned float32: %s\n", typeof(ret_f32));
+    
+    auto ret_i16 = returnInt16();
+    printf("returned int16: %s\n", typeof(ret_i16));
+    
+    return(0);
+}

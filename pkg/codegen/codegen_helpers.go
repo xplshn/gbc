@@ -19,11 +19,12 @@ func (ctx *Context) codegenIdent(node *ast.Node) (ir.Value, bool) {
 	}
 
 	switch sym.Type {
-	case symFunc:
-		return sym.IRVal, false
+	case symFunc: return sym.IRVal, false
 	case symExtrn:
 		isCall := node.Parent != nil && node.Parent.Type == ast.FuncCall && node.Parent.Data.(ast.FuncCallNode).FuncExpr == node
-		if isCall { return sym.IRVal, false }
+		if isCall {
+			return sym.IRVal, false
+		}
 		ctx.prog.ExtrnVars[name] = true
 		res := ctx.newTemp()
 		ctx.addInstr(&ir.Instruction{Op: ir.OpLoad, Typ: ir.TypePtr, Result: res, Args: []ir.Value{sym.IRVal}})
@@ -45,35 +46,71 @@ func (ctx *Context) codegenIdent(node *ast.Node) (ir.Value, bool) {
 		_, isLocal := sym.IRVal.(*ir.Temporary)
 		if isLocal {
 			isDopeVector := sym.IsVector && (sym.BxType == nil || sym.BxType.Kind == ast.TYPE_UNTYPED)
-			if isParam || isDopeVector { return ctx.genLoad(sym.IRVal, sym.BxType), false }
+			if isParam || isDopeVector {
+				return ctx.genLoad(sym.IRVal, sym.BxType), false
+			}
 		}
 		return sym.IRVal, false
 	}
 
-	if sym.BxType != nil && sym.BxType.Kind == ast.TYPE_STRUCT { return sym.IRVal, false }
+	if sym.BxType != nil && sym.BxType.Kind == ast.TYPE_STRUCT {
+		return sym.IRVal, false
+	}
 
 	return ctx.genLoad(sym.IRVal, sym.BxType), false
 }
 
 func (ctx *Context) isIntegerType(t *ast.BxType) bool {
-	return t != nil && (t.Kind == ast.TYPE_PRIMITIVE || t.Kind == ast.TYPE_UNTYPED_INT)
+	return t != nil && (t.Kind == ast.TYPE_PRIMITIVE || t.Kind == ast.TYPE_LITERAL_INT || t.Kind == ast.TYPE_ENUM)
 }
 
 func (ctx *Context) isFloatType(t *ast.BxType) bool {
-	return t != nil && (t.Kind == ast.TYPE_FLOAT || t.Kind == ast.TYPE_UNTYPED_FLOAT)
+	return t != nil && (t.Kind == ast.TYPE_FLOAT || t.Kind == ast.TYPE_LITERAL_FLOAT)
+}
+
+// getActualOperandType returns the IR type that will be used when loading this operand
+// This looks at the original declaration type, not the type-checker promoted type
+func (ctx *Context) getActualOperandType(node *ast.Node) ir.Type {
+	switch node.Type {
+	case ast.Ident:
+		// For identifiers, use the symbol's original declared type
+		name := node.Data.(ast.IdentNode).Name
+		if sym := ctx.findSymbol(name); sym != nil && sym.BxType != nil {
+			return ir.GetType(sym.BxType, ctx.wordSize)
+		}
+	case ast.FuncCall:
+		// For function calls, use the function's return type
+		d := node.Data.(ast.FuncCallNode)
+		if d.FuncExpr.Type == ast.Ident {
+			funcName := d.FuncExpr.Data.(ast.IdentNode).Name
+			if sym := ctx.findSymbol(funcName); sym != nil && sym.BxType != nil {
+				return ir.GetType(sym.BxType, ctx.wordSize)
+			}
+		}
+	}
+	// Fallback to the promoted type
+	return ir.GetType(node.Typ, ctx.wordSize)
 }
 
 func (ctx *Context) codegenAssign(node *ast.Node) (ir.Value, bool) {
 	d := node.Data.(ast.AssignNode)
 
-	if d.Lhs.Typ != nil && d.Lhs.Typ.Kind == ast.TYPE_STRUCT {
+	// Resolve named struct types to their actual definitions
+	lhsType := d.Lhs.Typ
+	if lhsType != nil && lhsType.Kind != ast.TYPE_STRUCT && lhsType.Name != "" {
+		if typeSym := ctx.findTypeSymbol(lhsType.Name); typeSym != nil && typeSym.BxType.Kind == ast.TYPE_STRUCT {
+			lhsType = typeSym.BxType
+		}
+	}
+
+	if lhsType != nil && lhsType.Kind == ast.TYPE_STRUCT {
 		if d.Op != token.Eq {
 			util.Error(node.Tok, "Compound assignment operators are not supported for structs")
 			return nil, false
 		}
 		lvalAddr := ctx.codegenLvalue(d.Lhs)
 		rvalPtr, _ := ctx.codegenExpr(d.Rhs)
-		size := ctx.getSizeof(d.Lhs.Typ)
+		size := ctx.getSizeof(lhsType)
 		ctx.addInstr(&ir.Instruction{
 			Op:   ir.OpBlit,
 			Args: []ir.Value{rvalPtr, lvalAddr, &ir.Const{Value: size}},
@@ -112,6 +149,55 @@ func (ctx *Context) codegenAssign(node *ast.Node) (ir.Value, bool) {
 
 	ctx.genStore(lvalAddr, rval, d.Lhs.Typ)
 	return rval, false
+}
+
+func (ctx *Context) codegenMultiAssign(node *ast.Node) (ir.Value, bool) {
+	d := node.Data.(ast.MultiAssignNode)
+	
+	// Only support simple '=' assignment for multi-assignment
+	if d.Op != token.Eq {
+		util.Error(node.Tok, "Compound assignment operators are not supported for multi-assignment")
+		return nil, false
+	}
+	
+	// Evaluate all rhs expressions first to avoid dependencies
+	var rvals []ir.Value
+	for _, rhs := range d.Rhs {
+		rval, _ := ctx.codegenExpr(rhs)
+		rvals = append(rvals, rval)
+	}
+	
+	// Then assign to all lhs expressions
+	for i, lhs := range d.Lhs {
+		lvalAddr := ctx.codegenLvalue(lhs)
+		rval := rvals[i]
+		
+		// Handle type conversions if needed (similar to single assignment)
+		if lhs.Typ != nil && d.Rhs[i].Typ != nil && lhs.Typ.Kind == ast.TYPE_FLOAT && ctx.isIntegerType(d.Rhs[i].Typ) {
+			castRval := ctx.newTemp()
+			var convOp ir.Op
+			if ctx.getSizeof(d.Rhs[i].Typ) == 8 {
+				convOp = ir.OpSLToF
+			} else {
+				convOp = ir.OpSWToF
+			}
+			ctx.addInstr(&ir.Instruction{
+				Op:     convOp,
+				Typ:    ir.GetType(lhs.Typ, ctx.wordSize),
+				Result: castRval,
+				Args:   []ir.Value{rval},
+			})
+			rval = castRval
+		}
+		
+		ctx.genStore(lvalAddr, rval, lhs.Typ)
+	}
+	
+	// Return the last assigned value
+	if len(rvals) > 0 {
+		return rvals[len(rvals)-1], false
+	}
+	return nil, false
 }
 
 func (ctx *Context) codegenBinaryOp(node *ast.Node) (ir.Value, bool) {
@@ -185,8 +271,51 @@ func (ctx *Context) codegenBinaryOp(node *ast.Node) (ir.Value, bool) {
 			ctx.addInstr(&ir.Instruction{Op: convOp, Typ: floatType, Result: castR, Args: []ir.Value{r}})
 			r = castR
 		}
-		if l_const, ok := l.(*ir.Const); ok { l = &ir.FloatConst{Value: float64(l_const.Value), Typ: floatType} }
-		if r_const, ok := r.(*ir.Const); ok { r = &ir.FloatConst{Value: float64(r_const.Value), Typ: floatType} }
+		if l_const, ok := l.(*ir.Const); ok {
+			l = &ir.FloatConst{Value: float64(l_const.Value), Typ: floatType}
+		}
+		if r_const, ok := r.(*ir.Const); ok {
+			r = &ir.FloatConst{Value: float64(r_const.Value), Typ: floatType}
+		}
+	}
+
+	// Handle integer type conversions - ensure both operands have compatible types for QBE
+	if ctx.isIntegerType(node.Typ) && !isFloatComparison {
+		// For QBE compatibility, we need to look at the actual declaration types of the operands
+		// rather than the promoted types from the type checker
+		actualLeftType := ctx.getActualOperandType(d.Left)
+		actualRightType := ctx.getActualOperandType(d.Right)
+
+		// Use actual types for conversion logic
+		if actualLeftType != resultIrType {
+			castL := ctx.newTemp()
+			var convOp ir.Op = ir.OpCast
+			if actualLeftType < resultIrType {
+				// Extending to larger size
+				switch actualLeftType {
+				case ir.TypeB: convOp = ir.OpExtUB
+				case ir.TypeH: convOp = ir.OpExtUH
+				case ir.TypeW: convOp = ir.OpExtSW
+				}
+			}
+			ctx.addInstr(&ir.Instruction{Op: convOp, Typ: resultIrType, OperandType: actualLeftType, Result: castL, Args: []ir.Value{l}})
+			l = castL
+		}
+
+		if actualRightType != resultIrType {
+			castR := ctx.newTemp()
+			var convOp ir.Op = ir.OpCast
+			if actualRightType < resultIrType {
+				// Extending to larger size
+				switch actualRightType {
+				case ir.TypeB: convOp = ir.OpExtUB
+				case ir.TypeH: convOp = ir.OpExtUH
+				case ir.TypeW: convOp = ir.OpExtSW
+				}
+			}
+			ctx.addInstr(&ir.Instruction{Op: convOp, Typ: resultIrType, OperandType: actualRightType, Result: castR, Args: []ir.Value{r}})
+			r = castR
+		}
 	}
 
 	var operandIrType ir.Type
@@ -244,7 +373,9 @@ func (ctx *Context) codegenUnaryOp(node *ast.Node) (ir.Value, bool) {
 		}
 		currentVal := ctx.genLoad(lvalAddr, d.Expr.Typ)
 		oneConst := ir.Value(&ir.Const{Value: 1})
-		if isFloat { oneConst = &ir.FloatConst{Value: 1.0, Typ: valType} }
+		if isFloat {
+			oneConst = &ir.FloatConst{Value: 1.0, Typ: valType}
+		}
 		ctx.addInstr(&ir.Instruction{Op: op, Typ: valType, Result: res, Args: []ir.Value{currentVal, oneConst}})
 		ctx.genStore(lvalAddr, res, d.Expr.Typ)
 	default:
@@ -263,10 +394,14 @@ func (ctx *Context) codegenPostfixOp(node *ast.Node) (ir.Value, bool) {
 	isFloat := ctx.isFloatType(d.Expr.Typ)
 
 	op := map[token.Type]ir.Op{token.Inc: ir.OpAdd, token.Dec: ir.OpSub}[d.Op]
-	if isFloat { op = map[token.Type]ir.Op{token.Inc: ir.OpAddF, token.Dec: ir.OpSubF}[d.Op] }
+	if isFloat {
+		op = map[token.Type]ir.Op{token.Inc: ir.OpAddF, token.Dec: ir.OpSubF}[d.Op]
+	}
 
 	oneConst := ir.Value(&ir.Const{Value: 1})
-	if isFloat { oneConst = &ir.FloatConst{Value: 1.0, Typ: valType} }
+	if isFloat {
+		oneConst = &ir.FloatConst{Value: 1.0, Typ: valType}
+	}
 
 	ctx.addInstr(&ir.Instruction{Op: op, Typ: valType, Result: newVal, Args: []ir.Value{res, oneConst}})
 	ctx.genStore(lvalAddr, newVal, d.Expr.Typ)
@@ -277,7 +412,17 @@ func (ctx *Context) codegenIndirection(node *ast.Node) (ir.Value, bool) {
 	exprNode := node.Data.(ast.IndirectionNode).Expr
 	addr, _ := ctx.codegenExpr(exprNode)
 
-	if node.Typ != nil && node.Typ.Kind == ast.TYPE_STRUCT { return addr, false }
+	// Resolve named struct types to their actual definitions
+	nodeType := node.Typ
+	if nodeType != nil && nodeType.Kind != ast.TYPE_STRUCT && nodeType.Name != "" {
+		if typeSym := ctx.findTypeSymbol(nodeType.Name); typeSym != nil && typeSym.BxType.Kind == ast.TYPE_STRUCT {
+			nodeType = typeSym.BxType
+		}
+	}
+
+	if nodeType != nil && nodeType.Kind == ast.TYPE_STRUCT {
+		return addr, false
+	}
 
 	loadType := node.Typ
 	if !ctx.isTypedPass && exprNode.Type == ast.Ident {
@@ -296,7 +441,9 @@ func (ctx *Context) codegenSubscriptAddr(node *ast.Node) ir.Value {
 	var scale int64 = int64(ctx.wordSize)
 	if d.Array.Typ != nil {
 		if d.Array.Typ.Kind == ast.TYPE_POINTER || d.Array.Typ.Kind == ast.TYPE_ARRAY {
-			if d.Array.Typ.Base != nil { scale = ctx.getSizeof(d.Array.Typ.Base) }
+			if d.Array.Typ.Base != nil {
+				scale = ctx.getSizeof(d.Array.Typ.Base)
+			}
 		}
 	} else if !ctx.isTypedPass && d.Array.Type == ast.Ident {
 		if sym := ctx.findSymbol(d.Array.Data.(ast.IdentNode).Name); sym != nil && sym.IsByteArray {
@@ -331,7 +478,9 @@ func (ctx *Context) codegenAddressOf(node *ast.Node) (ir.Value, bool) {
 		name := lvalNode.Data.(ast.IdentNode).Name
 		if sym := ctx.findSymbol(name); sym != nil {
 			isTypedArray := sym.BxType != nil && sym.BxType.Kind == ast.TYPE_ARRAY
-			if sym.Type == symFunc || isTypedArray { return sym.IRVal, false }
+			if sym.Type == symFunc || isTypedArray {
+				return sym.IRVal, false
+			}
 			if sym.IsVector {
 				res, _ := ctx.codegenExpr(lvalNode)
 				return res, false
@@ -352,14 +501,29 @@ func (ctx *Context) codegenFuncCall(node *ast.Node) (ir.Value, bool) {
 
 	funcVal, _ := ctx.codegenExpr(d.FuncExpr)
 
+	// Get function signature for type checking
+	var expectedParamTypes []*ast.BxType
 	isVariadic := false
+
 	if d.FuncExpr.Type == ast.Ident {
 		name := d.FuncExpr.Data.(ast.IdentNode).Name
 		if sym := ctx.findSymbol(name); sym != nil {
 			if sym.Node != nil {
-				if fd, ok := sym.Node.Data.(ast.FuncDeclNode); ok { isVariadic = fd.HasVarargs }
+				if fd, ok := sym.Node.Data.(ast.FuncDeclNode); ok {
+					isVariadic = fd.HasVarargs
+					// Extract parameter types
+					for _, param := range fd.Params {
+						// Handle both typed parameters (VarDeclNode) and untyped parameters (IdentNode)
+						if paramData, ok := param.Data.(ast.VarDeclNode); ok {
+							expectedParamTypes = append(expectedParamTypes, paramData.Type)
+						}
+						// For IdentNode (untyped parameters), we can't extract type info, so skip
+					}
+				}
 			}
-			if !isVariadic && sym.Type == symExtrn { isVariadic = true }
+			if !isVariadic && sym.Type == symExtrn {
+				isVariadic = true
+			}
 		}
 	}
 
@@ -367,7 +531,46 @@ func (ctx *Context) codegenFuncCall(node *ast.Node) (ir.Value, bool) {
 	argTypes := make([]ir.Type, len(d.Args))
 	for i := len(d.Args) - 1; i >= 0; i-- {
 		argVals[i], _ = ctx.codegenExpr(d.Args[i])
-		argTypes[i] = ir.GetType(d.Args[i].Typ, ctx.wordSize)
+
+		// For typed functions with known parameter types, use the expected type
+		var expectedArgType *ast.BxType
+		if i < len(expectedParamTypes) {
+			expectedArgType = expectedParamTypes[i]
+		}
+
+		// If we have an expected type and the argument is a literal that can be coerced
+		if expectedArgType != nil && d.Args[i].Typ != nil {
+			argType := d.Args[i].Typ
+
+			// Handle float literal coercion to specific float types
+			if argType.Kind == ast.TYPE_LITERAL_FLOAT && expectedArgType.Kind == ast.TYPE_FLOAT {
+				// Debug warning for type coercion
+				if ctx.cfg.IsWarningEnabled(config.WarnDebugComp) {
+					util.Warn(ctx.cfg, config.WarnDebugComp, d.Args[i].Tok,
+						"Coercing float literal to %s for parameter %d", expectedArgType.Name, i+1)
+				}
+
+				expectedIrType := ir.GetType(expectedArgType, ctx.wordSize)
+				currentIrType := ir.GetType(argType, ctx.wordSize)
+
+				// Convert if types don't match
+				if currentIrType != expectedIrType {
+					convertedVal := ctx.newTemp()
+					ctx.addInstr(&ir.Instruction{
+						Op:     ir.OpFToF,
+						Typ:    expectedIrType,
+						Result: convertedVal,
+						Args:   []ir.Value{argVals[i]},
+					})
+					argVals[i] = convertedVal
+				}
+				argTypes[i] = expectedIrType
+			} else {
+				argTypes[i] = ir.GetType(d.Args[i].Typ, ctx.wordSize)
+			}
+		} else {
+			argTypes[i] = ir.GetType(d.Args[i].Typ, ctx.wordSize)
+		}
 
 		if isVariadic && argTypes[i] == ir.TypeS {
 			promotedVal := ctx.newTemp()
@@ -387,7 +590,9 @@ func (ctx *Context) codegenFuncCall(node *ast.Node) (ir.Value, bool) {
 	returnType := ir.GetType(node.Typ, ctx.wordSize)
 	callArgs := append([]ir.Value{funcVal}, argVals...)
 
-	if !isStmt && returnType != ir.TypeNone { res = ctx.newTemp() }
+	if !isStmt && returnType != ir.TypeNone {
+		res = ctx.newTemp()
+	}
 
 	ctx.addInstr(&ir.Instruction{
 		Op:       ir.OpCall,
@@ -407,7 +612,9 @@ func (ctx *Context) codegenTypeCast(node *ast.Node) (ir.Value, bool) {
 	sourceType := d.Expr.Typ
 	targetType := d.TargetType
 
-	if ir.GetType(sourceType, ctx.wordSize) == ir.GetType(targetType, ctx.wordSize) { return val, false }
+	if ir.GetType(sourceType, ctx.wordSize) == ir.GetType(targetType, ctx.wordSize) {
+		return val, false
+	}
 
 	res := ctx.newTemp()
 	targetIrType := ir.GetType(targetType, ctx.wordSize)
@@ -420,7 +627,9 @@ func (ctx *Context) codegenTypeCast(node *ast.Node) (ir.Value, bool) {
 	op := ir.OpCast
 	if sourceIsInt && targetIsFloat {
 		op = ir.OpSWToF
-		if ctx.getSizeof(sourceType) == 8 { op = ir.OpSLToF }
+		if ctx.getSizeof(sourceType) == 8 {
+			op = ir.OpSLToF
+		}
 	} else if sourceIsFloat && targetIsFloat {
 		op = ir.OpFToF
 	} else if sourceIsFloat && targetIsInt {
@@ -429,9 +638,12 @@ func (ctx *Context) codegenTypeCast(node *ast.Node) (ir.Value, bool) {
 		sourceSize, targetSize := ctx.getSizeof(sourceType), ctx.getSizeof(targetType)
 		if targetSize > sourceSize {
 			switch sourceSize {
-			case 1: op = ir.OpExtSB
-			case 2: op = ir.OpExtSH
-			case 4: op = ir.OpExtSW
+			case 1:
+				op = ir.OpExtSB
+			case 2:
+				op = ir.OpExtSH
+			case 4:
+				op = ir.OpExtSW
 			}
 		}
 	}
@@ -484,8 +696,12 @@ func (ctx *Context) codegenTernary(node *ast.Node) (ir.Value, bool) {
 	if !terminates {
 		ctx.startBlock(endL)
 		phiArgs := []ir.Value{}
-		if !thenTerminates { phiArgs = append(phiArgs, thenPred, thenVal) }
-		if !elseTerminates { phiArgs = append(phiArgs, elsePred, elseVal) }
+		if !thenTerminates {
+			phiArgs = append(phiArgs, thenPred, thenVal)
+		}
+		if !elseTerminates {
+			phiArgs = append(phiArgs, elsePred, elseVal)
+		}
 		ctx.addInstr(&ir.Instruction{Op: ir.OpPhi, Typ: resType, Result: res, Args: phiArgs})
 	}
 	return res, terminates
@@ -587,6 +803,42 @@ func (ctx *Context) codegenStructLiteral(node *ast.Node) (ir.Value, bool) {
 	return structPtr, false
 }
 
+func (ctx *Context) codegenArrayLiteral(node *ast.Node) (ir.Value, bool) {
+	d := node.Data.(ast.ArrayLiteralNode)
+
+	// For array literals, we need the element type and count from the literal itself
+	elemType := d.ElementType
+	elemSize := ctx.getSizeof(elemType)
+	elemAlign := ctx.getAlignof(elemType)
+	arraySize := int64(len(d.Values)) * elemSize
+
+	// Allocate memory for the array
+	arrayPtr := ctx.newTemp()
+	ctx.addInstr(&ir.Instruction{
+		Op:     ir.OpAlloc,
+		Typ:    ir.GetType(nil, ctx.wordSize),
+		Result: arrayPtr,
+		Args:   []ir.Value{&ir.Const{Value: arraySize}},
+		Align:  int(elemAlign),
+	})
+
+	// Initialize each element
+	for i, valNode := range d.Values {
+		elemOffset := int64(i) * elemSize
+		elemAddr := ctx.newTemp()
+		ctx.addInstr(&ir.Instruction{
+			Op:     ir.OpAdd,
+			Typ:    ir.GetType(nil, ctx.wordSize),
+			Result: elemAddr,
+			Args:   []ir.Value{arrayPtr, &ir.Const{Value: elemOffset}},
+		})
+		val, _ := ctx.codegenExpr(valNode)
+		ctx.genStore(elemAddr, val, elemType)
+	}
+
+	return arrayPtr, false
+}
+
 func (ctx *Context) codegenReturn(node *ast.Node) bool {
 	d := node.Data.(ast.ReturnNode)
 	var retVal ir.Value
@@ -604,22 +856,30 @@ func (ctx *Context) codegenIf(node *ast.Node) bool {
 	d := node.Data.(ast.IfNode)
 	thenL, endL := ctx.newLabel(), ctx.newLabel()
 	elseL := endL
-	if d.ElseBody != nil { elseL = ctx.newLabel() }
+	if d.ElseBody != nil {
+		elseL = ctx.newLabel()
+	}
 
 	ctx.codegenLogicalCond(d.Cond, thenL, elseL)
 
 	ctx.startBlock(thenL)
 	thenTerminates := ctx.codegenStmt(d.ThenBody)
-	if !thenTerminates { ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{endL}}) }
+	if !thenTerminates {
+		ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{endL}})
+	}
 
 	var elseTerminates bool
 	if d.ElseBody != nil {
 		ctx.startBlock(elseL)
 		elseTerminates = ctx.codegenStmt(d.ElseBody)
-		if !elseTerminates { ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{endL}}) }
+		if !elseTerminates {
+			ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{endL}})
+		}
 	}
 
-	if !thenTerminates || !elseTerminates { ctx.startBlock(endL) }
+	if !thenTerminates || !elseTerminates {
+		ctx.startBlock(endL)
+	}
 	return thenTerminates && (d.ElseBody != nil && elseTerminates)
 }
 
@@ -637,48 +897,99 @@ func (ctx *Context) codegenWhile(node *ast.Node) bool {
 
 	ctx.startBlock(bodyL)
 	bodyTerminates := ctx.codegenStmt(d.Body)
-	if !bodyTerminates { ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{startL}}) }
+	if !bodyTerminates {
+		ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{startL}})
+	}
 
 	ctx.startBlock(endL)
 	return false
 }
 
 func getBinaryOpAndType(op token.Type, resultAstType *ast.BxType, wordSize int) (ir.Op, ir.Type) {
-	if resultAstType != nil && (resultAstType.Kind == ast.TYPE_FLOAT || resultAstType.Kind == ast.TYPE_UNTYPED_FLOAT) {
+	if resultAstType != nil && (resultAstType.Kind == ast.TYPE_FLOAT || resultAstType.Kind == ast.TYPE_LITERAL_FLOAT) {
 		typ := ir.GetType(resultAstType, wordSize)
 		switch op {
-		case token.Plus, token.PlusEq, token.EqPlus: return ir.OpAddF, typ
-		case token.Minus, token.MinusEq, token.EqMinus: return ir.OpSubF, typ
-		case token.Star, token.StarEq, token.EqStar: return ir.OpMulF, typ
-		case token.Slash, token.SlashEq, token.EqSlash: return ir.OpDivF, typ
-		case token.Rem, token.RemEq, token.EqRem: return ir.OpRemF, typ
-		case token.EqEq: return ir.OpCEq, typ
-		case token.Neq: return ir.OpCNeq, typ
-		case token.Lt: return ir.OpCLt, typ
-		case token.Gt: return ir.OpCGt, typ
-		case token.Lte: return ir.OpCLe, typ
-		case token.Gte: return ir.OpCGe, typ
+		case token.Plus, token.PlusEq, token.EqPlus:
+			return ir.OpAddF, typ
+		case token.Minus, token.MinusEq, token.EqMinus:
+			return ir.OpSubF, typ
+		case token.Star, token.StarEq, token.EqStar:
+			return ir.OpMulF, typ
+		case token.Slash, token.SlashEq, token.EqSlash:
+			return ir.OpDivF, typ
+		case token.Rem, token.RemEq, token.EqRem:
+			return ir.OpRemF, typ
+		case token.EqEq:
+			return ir.OpCEq, typ
+		case token.Neq:
+			return ir.OpCNeq, typ
+		case token.Lt:
+			return ir.OpCLt, typ
+		case token.Gt:
+			return ir.OpCGt, typ
+		case token.Lte:
+			return ir.OpCLe, typ
+		case token.Gte:
+			return ir.OpCGe, typ
 		}
 	}
 
 	typ := ir.GetType(resultAstType, wordSize)
 	switch op {
-	case token.Plus, token.PlusEq, token.EqPlus: return ir.OpAdd, typ
-	case token.Minus, token.MinusEq, token.EqMinus: return ir.OpSub, typ
-	case token.Star, token.StarEq, token.EqStar: return ir.OpMul, typ
-	case token.Slash, token.SlashEq, token.EqSlash: return ir.OpDiv, typ
-	case token.Rem, token.RemEq, token.EqRem: return ir.OpRem, typ
-	case token.And, token.AndEq, token.EqAnd: return ir.OpAnd, typ
-	case token.Or, token.OrEq, token.EqOr: return ir.OpOr, typ
-	case token.Xor, token.XorEq, token.EqXor: return ir.OpXor, typ
-	case token.Shl, token.ShlEq, token.EqShl: return ir.OpShl, typ
-	case token.Shr, token.ShrEq, token.EqShr: return ir.OpShr, typ
-	case token.EqEq: return ir.OpCEq, typ
-	case token.Neq: return ir.OpCNeq, typ
-	case token.Lt: return ir.OpCLt, typ
-	case token.Gt: return ir.OpCGt, typ
-	case token.Lte: return ir.OpCLe, typ
-	case token.Gte: return ir.OpCGe, typ
+	case token.Plus, token.PlusEq, token.EqPlus:
+		return ir.OpAdd, typ
+	case token.Minus, token.MinusEq, token.EqMinus:
+		return ir.OpSub, typ
+	case token.Star, token.StarEq, token.EqStar:
+		return ir.OpMul, typ
+	case token.Slash, token.SlashEq, token.EqSlash:
+		return ir.OpDiv, typ
+	case token.Rem, token.RemEq, token.EqRem:
+		return ir.OpRem, typ
+	case token.And, token.AndEq, token.EqAnd:
+		return ir.OpAnd, typ
+	case token.Or, token.OrEq, token.EqOr:
+		return ir.OpOr, typ
+	case token.Xor, token.XorEq, token.EqXor:
+		return ir.OpXor, typ
+	case token.Shl, token.ShlEq, token.EqShl:
+		return ir.OpShl, typ
+	case token.Shr, token.ShrEq, token.EqShr:
+		return ir.OpShr, typ
+	case token.EqEq:
+		return ir.OpCEq, typ
+	case token.Neq:
+		return ir.OpCNeq, typ
+	case token.Lt:
+		return ir.OpCLt, typ
+	case token.Gt:
+		return ir.OpCGt, typ
+	case token.Lte:
+		return ir.OpCLe, typ
+	case token.Gte:
+		return ir.OpCGe, typ
 	}
 	return -1, -1
+}
+
+// codegenTypeOf generates code for typeof(expr) which returns a string representation of the type
+func (ctx *Context) codegenTypeOf(node *ast.Node) (ir.Value, bool) {
+	d := node.Data.(ast.TypeOfNode)
+
+	// Type check the expression to determine its type
+	_, _ = ctx.codegenExpr(d.Expr)
+
+	// Get the type of the expression
+	var exprType *ast.BxType
+	if d.Expr.Typ != nil {
+		exprType = d.Expr.Typ
+	} else {
+		exprType = ast.TypeUntyped
+	}
+
+	// Convert the type to its string representation
+	typeStr := ast.TypeToString(exprType)
+
+	// Add the string to the string table and return a reference to it
+	return ctx.addString(typeStr), false
 }

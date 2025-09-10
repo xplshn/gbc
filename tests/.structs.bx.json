@@ -1,0 +1,126 @@
+{
+  "binary_path": "/tmp/gtest-3724198725/87256ca3ad2a629c",
+  "compile": {
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-3724198725/87256ca3ad2a629c'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\n",
+    "exitCode": 0,
+    "duration": 36315010,
+    "timed_out": false
+  },
+  "runs": [
+    {
+      "name": "fold",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 480889,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "fold2",
+      "args": [
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 730982,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "hashTable",
+      "args": [
+        "s foo 10\ns bar 50\ng\ng foo\ng bar\np\nq\n"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 371906,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "no_args",
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 334177,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_0",
+      "args": [
+        "0"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 355225,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_neg",
+      "args": [
+        "-5"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 488458,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "numeric_arg_pos",
+      "args": [
+        "5"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 567712,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "quit",
+      "args": [
+        "q"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 346934,
+        "timed_out": false
+      }
+    },
+    {
+      "name": "string_arg",
+      "args": [
+        "test"
+      ],
+      "result": {
+        "stdout": "p.x: 10\np.y: 20\np2.x: 2\np2.y: 4\nv.x: 16\nv.y: 32\nv2.x: 5\nv2.y: 10\ns.a: 0.100000\ns.b: 0.200000\ns.c: 0.300000\ns.z: 50\n",
+        "stderr": "",
+        "exitCode": 0,
+        "duration": 328997,
+        "timed_out": false
+      }
+    }
+  ]
+}

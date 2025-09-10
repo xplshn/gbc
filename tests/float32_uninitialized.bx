@@ -1,0 +1,10 @@
+extrn printf;
+
+int main() {
+   float32 x, y;  // Declare but do not initialize
+   printf("Before assignment: x = %.3f, y = %.3f\n", x, y);
+   x = 1.25;
+   y = 2.75;
+   printf("After assignment: x = %.3f, y = %.3f\n", x, y);
+   return (0);
+}

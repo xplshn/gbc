@@ -1,36 +1,36 @@
 {
-  "binary_path": "/tmp/gtest-3087621747/f6bfb35d69b7af1",
+  "binary_path": "/tmp/gtest-574252330/f6bfb35d69b7af1",
   "compile": {
-    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nQBE Codegen...\nCalling libqbe on our QBE IR...\nAssembling and linking to create '/tmp/gtest-3087621747/f6bfb35d69b7af1'...\n----------------------\nCompilation successful!\n",
-    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv'\n",
+    "stdout": "----------------------\nTokenizing 1 source file(s) (Typed Pass: true)...\nParsing tokens into AST...\nConstant folding...\nType checking...\nGenerating backend-agnostic IR...\nGenerating target code with 'qbe' backend...\nAssembling and linking to create '/tmp/gtest-574252330/f6bfb35d69b7af1'...\n----------------------\nCompilation successful!\n",
+    "stderr": "gbc: info: no target specified, defaulting to host target 'amd64_sysv' for backend 'qbe'\ngbc: info: using backend 'qbe' with target 'amd64_sysv' (GOOS=linux, GOARCH=amd64)\n",
     "exitCode": 0,
-    "duration": 58934128,
+    "duration": 42724761,
     "timed_out": false
   },
   "runs": [
     {
       "name": "fold",
       "args": [
-        "09876543210123456789009887654321012345678900987654321098765432101234567890098876543210123456789009876543210\n"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzAB\n"
       ],
       "result": {
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 480603,
+        "duration": 349710,
         "timed_out": false
       }
     },
     {
       "name": "fold2",
       "args": [
-        "098765432101234567890098876543210123456789009876543210\n"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX\n"
       ],
       "result": {
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 439486,
+        "duration": 322891,
         "timed_out": false
       }
     },
@@ -43,7 +43,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 388710,
+        "duration": 306735,
         "timed_out": false
       }
     },
@@ -53,7 +53,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 345615,
+        "duration": 321056,
         "timed_out": false
       }
     },
@@ -66,7 +66,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 346734,
+        "duration": 312027,
         "timed_out": false
       }
     },
@@ -79,7 +79,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 340355,
+        "duration": 309499,
         "timed_out": false
       }
     },
@@ -92,7 +92,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 332373,
+        "duration": 309075,
         "timed_out": false
       }
     },
@@ -105,7 +105,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 346248,
+        "duration": 320944,
         "timed_out": false
       }
     },
@@ -118,7 +118,7 @@
         "stdout": "--- Vector \u0026 Matrix Math Demo ---\nVector A: [3, 5]\nVector B: [-2, 4]\n\n--- Vector Operations ---\nA + B: [1, 9]\nA . B: 14\n\n--- Matrix Operations ---\nRotation Matrix R: [[0, 1], [-1, 0]]\nScaling Matrix T: [[2, 0], [0, 3]]\nR * A: [5, -3]\nT * R: [[0, 2], [-3, 0]]\n(T * R) * B: [8, 6]\n",
         "stderr": "",
         "exitCode": 0,
-        "duration": 342933,
+        "duration": 341927,
         "timed_out": false
       }
     }

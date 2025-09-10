@@ -30,6 +30,7 @@ const (
 	FeatContinue
 	FeatFloat
 	FeatStrictTypes
+	FeatPromTypes
 	FeatCount
 )
 
@@ -48,10 +49,11 @@ const (
 	WarnPedantic
 	WarnUnreachableCode
 	WarnImplicitDecl
-	WarnType
 	WarnExtra
 	WarnFloat
 	WarnLocalAddress
+	WarnDebugComp
+	WarnPromTypes
 	WarnCount
 )
 
@@ -94,11 +96,11 @@ var archProperties = map[string]struct {
 }
 
 type Config struct {
-	Features         map[Feature]Info
-	Warnings         map[Warning]Info
-	FeatureMap       map[string]Feature
-	WarningMap       map[string]Warning
-	StdName          string
+	Features   map[Feature]Info
+	Warnings   map[Warning]Info
+	FeatureMap map[string]Feature
+	WarningMap map[string]Warning
+	StdName    string
 	Target
 	LinkerArgs       []string
 	LibRequests      []string
@@ -133,6 +135,7 @@ func NewConfig() *Config {
 		FeatNoDirectives:       {"no-directives", false, "Disable `// [b]:` directives"},
 		FeatFloat:              {"float", true, "Enable support for floating-point numbers"},
 		FeatStrictTypes:        {"strict-types", false, "Disallow all incompatible type operations"},
+		FeatPromTypes:          {"prom-types", false, "Enable type promotions - promote untyped literals to compatible types"},
 	}
 
 	warnings := map[Warning]Info{
@@ -148,10 +151,11 @@ func NewConfig() *Config {
 		WarnPedantic:           {"pedantic", false, "Issue all warnings demanded by the strict standard"},
 		WarnUnreachableCode:    {"unreachable-code", true, "Warn about code that will never be executed"},
 		WarnImplicitDecl:       {"implicit-decl", true, "Warn about implicit function or variable declarations"},
-		WarnType:               {"type", true, "Warn about type mismatches in expressions and assignments"},
 		WarnExtra:              {"extra", true, "Enable extra miscellaneous warnings"},
 		WarnFloat:              {"float", false, "Warn when floating-point numbers are used"},
 		WarnLocalAddress:       {"local-address", true, "Warn when the address of a local variable is returned"},
+		WarnDebugComp:          {"debug-comp", false, "Debug warning for type promotions and conversions"},
+		WarnPromTypes:          {"prom-types", true, "Warn when type promotions occur"},
 	}
 
 	cfg.Features, cfg.Warnings = features, warnings

@@ -1,0 +1,51 @@
+// Tests for typeof in function parameter contexts
+extrn printf;
+
+// Test function with simple parameters
+void testFunc(i int, f float) {
+    printf("In testFunc:\n");
+    printf("  param int: %s\n", typeof(i));
+    printf("  param float: %s\n", typeof(f));
+}
+
+// Test function calls with literals - verify type coercion
+void testLiteralCoercion() {
+    printf("\n=== Function Parameter Type Coercion ===\n");
+    
+    // Call with literals - should get coerced to parameter types
+    testFunc(42, 3.14);
+    
+    // Test in assignment context
+    printf("\n=== Assignment Context ===\n");
+    
+    float assigned_literal;
+    assigned_literal = 0.5;  // literal float should be coerced to float
+    printf("assigned literal to float: %s\n", typeof(assigned_literal));
+    
+    int assigned_int;  
+    assigned_int = 100;  // literal int should be coerced to int
+    printf("assigned literal to int: %s\n", typeof(assigned_int));
+}
+
+// Test return types
+float returnFloat() {
+    return (2.5);  // literal should be coerced to float
+}
+
+int returnInt() {
+    return (42);  // literal should be coerced to int  
+}
+
+main() {
+    testLiteralCoercion();
+    
+    printf("\n=== Return Type Context ===\n");
+    
+    auto ret_f = returnFloat();
+    printf("returned float: %s\n", typeof(ret_f));
+    
+    auto ret_i = returnInt();
+    printf("returned int: %s\n", typeof(ret_i));
+    
+    return(0);
+}

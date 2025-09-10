@@ -32,15 +32,9 @@ type symbol struct {
 	Node        *ast.Node
 }
 
-type scope struct {
-	Symbols *symbol
-	Parent  *scope
-}
+type scope struct{ Symbols *symbol; Parent *scope }
 
-type autoVarInfo struct {
-	Node *ast.Node
-	Size int64
-}
+type autoVarInfo struct{ Node *ast.Node; Size int64 }
 
 type Context struct {
 	prog             *ir.Program
@@ -81,38 +75,29 @@ func newScope(parent *scope) *scope { return &scope{Parent: parent} }
 
 func (ctx *Context) enterScope() { ctx.currentScope = newScope(ctx.currentScope) }
 func (ctx *Context) exitScope() {
-	if ctx.currentScope.Parent != nil {
-		ctx.currentScope = ctx.currentScope.Parent
-	}
+	if ctx.currentScope.Parent != nil { ctx.currentScope = ctx.currentScope.Parent }
 }
 
 func (ctx *Context) findSymbol(name string) *symbol {
-	for s := ctx.currentScope; s != nil; s = s.Parent {
-		for sym := s.Symbols; sym != nil; sym = sym.Next {
-			if sym.Name == name && sym.Type != symType {
-				return sym
-			}
-		}
-	}
-	return nil
+	return ctx.findSymbolOfType(name, -1, false) // -1 means any type except symType
 }
 
 func (ctx *Context) findTypeSymbol(name string) *symbol {
-	for s := ctx.currentScope; s != nil; s = s.Parent {
-		for sym := s.Symbols; sym != nil; sym = sym.Next {
-			if sym.Name == name && sym.Type == symType {
-				return sym
-			}
-		}
-	}
-	return nil
+	return ctx.findSymbolOfType(name, symType, false)
 }
 
 func (ctx *Context) findSymbolInCurrentScope(name string) *symbol {
-	for sym := ctx.currentScope.Symbols; sym != nil; sym = sym.Next {
-		if sym.Name == name {
-			return sym
+	return ctx.findSymbolOfType(name, -1, true) // any type, current scope only
+}
+
+func (ctx *Context) findSymbolOfType(name string, wantType symbolType, currentOnly bool) *symbol {
+	for s := ctx.currentScope; s != nil; s = s.Parent {
+		for sym := s.Symbols; sym != nil; sym = sym.Next {
+			if sym.Name == name {
+				if wantType == -1 || (wantType == symType) == (sym.Type == symType) { return sym }
+			}
 		}
+		if currentOnly { break }
 	}
 	return nil
 }
@@ -129,10 +114,8 @@ func (ctx *Context) addSymbol(name string, symType symbolType, bxType *ast.BxTyp
 				t.Name = name
 			}
 		}
-	case symFunc, symExtrn:
-		irVal = &ir.Global{Name: name}
-	case symLabel:
-		irVal = &ir.Label{Name: name}
+	case symFunc, symExtrn: irVal = &ir.Global{Name: name}
+	case symLabel: irVal = &ir.Label{Name: name}
 	}
 
 	sym := &symbol{
@@ -162,38 +145,28 @@ func (ctx *Context) startBlock(label *ir.Label) {
 }
 
 func (ctx *Context) addInstr(instr *ir.Instruction) {
-	if ctx.currentBlock == nil {
-		ctx.startBlock(ctx.newLabel())
-	}
+	if ctx.currentBlock == nil { ctx.startBlock(ctx.newLabel()) }
 	ctx.currentBlock.Instructions = append(ctx.currentBlock.Instructions, instr)
 }
 
 func (ctx *Context) addString(value string) ir.Value {
-	if label, ok := ctx.prog.Strings[value]; ok {
-		return &ir.Global{Name: label}
-	}
+	if label, ok := ctx.prog.Strings[value]; ok { return &ir.Global{Name: label} }
 	label := fmt.Sprintf("str%d", len(ctx.prog.Strings))
 	ctx.prog.Strings[value] = label
 	return &ir.Global{Name: label}
 }
 
 func (ctx *Context) evalConstExpr(node *ast.Node) (int64, bool) {
-	if node == nil {
-		return 0, false
-	}
+	if node == nil { return 0, false }
 	folded := ast.FoldConstants(node)
-	if folded.Type == ast.Number {
-		return folded.Data.(ast.NumberNode).Value, true
-	}
+	if folded.Type == ast.Number { return folded.Data.(ast.NumberNode).Value, true }
 	if folded.Type == ast.Ident {
 		identName := folded.Data.(ast.IdentNode).Name
 		sym := ctx.findSymbol(identName)
 		if sym != nil && sym.Node != nil && sym.Node.Type == ast.VarDecl {
 			decl := sym.Node.Data.(ast.VarDeclNode)
 			if len(decl.InitList) == 1 {
-				if decl.InitList[0] == node {
-					return 0, false
-				}
+				if decl.InitList[0] == node { return 0, false }
 				return ctx.evalConstExpr(decl.InitList[0])
 			}
 		}
@@ -202,14 +175,11 @@ func (ctx *Context) evalConstExpr(node *ast.Node) (int64, bool) {
 }
 
 func (ctx *Context) getSizeof(typ *ast.BxType) int64 {
-	if typ == nil || typ.Kind == ast.TYPE_UNTYPED {
-		return int64(ctx.wordSize)
-	}
+	if typ == nil || typ.Kind == ast.TYPE_UNTYPED { return int64(ctx.wordSize) }
+
 	switch typ.Kind {
-	case ast.TYPE_VOID:
-		return 0
-	case ast.TYPE_POINTER:
-		return int64(ctx.wordSize)
+	case ast.TYPE_VOID: return 0
+	case ast.TYPE_POINTER: return int64(ctx.wordSize)
 	case ast.TYPE_ARRAY:
 		elemSize := ctx.getSizeof(typ.Base)
 		var arrayLen int64 = 1
@@ -221,35 +191,24 @@ func (ctx *Context) getSizeof(typ *ast.BxType) int64 {
 			}
 		}
 		return elemSize * arrayLen
-	case ast.TYPE_PRIMITIVE, ast.TYPE_UNTYPED_INT:
-		switch typ.Name {
-		case "int", "uint", "string":
-			return int64(ctx.wordSize)
-		case "int64", "uint64":
-			return 8
-		case "int32", "uint32":
-			return 4
-		case "int16", "uint16":
-			return 2
-		case "byte", "bool", "int8", "uint8":
-			return 1
-		default:
-			if sym := ctx.findTypeSymbol(typ.Name); sym != nil {
-				return ctx.getSizeof(sym.BxType)
-			}
-			return int64(ctx.wordSize)
+	case ast.TYPE_PRIMITIVE, ast.TYPE_LITERAL_INT:
+		resolver := ir.NewTypeSizeResolver(ctx.wordSize)
+		if size := resolver.GetTypeSize(typ.Name); size > 0 {
+			return size
 		}
+		// Fallback for user-defined types
+		if sym := ctx.findTypeSymbol(typ.Name); sym != nil {
+			return ctx.getSizeof(sym.BxType)
+		}
+		return int64(ctx.wordSize)
 	case ast.TYPE_ENUM:
 		return ctx.getSizeof(ast.TypeInt)
-	case ast.TYPE_FLOAT, ast.TYPE_UNTYPED_FLOAT:
-		switch typ.Name {
-		case "float", "float32":
-			return 4
-		case "float64":
-			return 8
-		default:
-			return 4
+	case ast.TYPE_FLOAT, ast.TYPE_LITERAL_FLOAT:
+		if typ.Kind == ast.TYPE_LITERAL_FLOAT {
+			return int64(ctx.wordSize)
 		}
+		resolver := ir.NewTypeSizeResolver(ctx.wordSize)
+		return resolver.GetTypeSize(typ.Name)
 	case ast.TYPE_STRUCT:
 		var totalSize, maxAlign int64 = 0, 1
 		for _, field := range typ.Fields {
@@ -270,37 +229,25 @@ func (ctx *Context) getSizeof(typ *ast.BxType) int64 {
 }
 
 func (ctx *Context) getAlignof(typ *ast.BxType) int64 {
-	if typ == nil {
-		return int64(ctx.wordSize)
-	}
+	if typ == nil { return int64(ctx.wordSize) }
 
 	if (typ.Kind == ast.TYPE_PRIMITIVE || typ.Kind == ast.TYPE_STRUCT) && typ.Name != "" {
 		if sym := ctx.findTypeSymbol(typ.Name); sym != nil {
-			if sym.BxType != typ {
-				return ctx.getAlignof(sym.BxType)
-			}
+			if sym.BxType != typ { return ctx.getAlignof(sym.BxType) }
 		}
 	}
 
-	if typ.Kind == ast.TYPE_UNTYPED {
-		return int64(ctx.wordSize)
-	}
+	if typ.Kind == ast.TYPE_UNTYPED { return int64(ctx.wordSize) }
 	switch typ.Kind {
-	case ast.TYPE_VOID:
-		return 1
-	case ast.TYPE_POINTER:
-		return int64(ctx.wordSize)
-	case ast.TYPE_ARRAY:
-		return ctx.getAlignof(typ.Base)
-	case ast.TYPE_PRIMITIVE, ast.TYPE_FLOAT, ast.TYPE_ENUM, ast.TYPE_UNTYPED_INT, ast.TYPE_UNTYPED_FLOAT:
-		return ctx.getSizeof(typ)
+	case ast.TYPE_VOID: return 1
+	case ast.TYPE_POINTER: return int64(ctx.wordSize)
+	case ast.TYPE_ARRAY: return ctx.getAlignof(typ.Base)
+	case ast.TYPE_PRIMITIVE, ast.TYPE_FLOAT, ast.TYPE_ENUM, ast.TYPE_LITERAL_INT, ast.TYPE_LITERAL_FLOAT: return ctx.getSizeof(typ)
 	case ast.TYPE_STRUCT:
 		var maxAlign int64 = 1
 		for _, field := range typ.Fields {
 			fieldAlign := ctx.getAlignof(field.Data.(ast.VarDeclNode).Type)
-			if fieldAlign > maxAlign {
-				maxAlign = fieldAlign
-			}
+			if fieldAlign > maxAlign { maxAlign = fieldAlign }
 		}
 		return maxAlign
 	}
@@ -320,9 +267,7 @@ func (ctx *Context) GenerateIR(root *ast.Node) (*ir.Program, string) {
 }
 
 func walkAST(node *ast.Node, visitor func(n *ast.Node)) {
-	if node == nil {
-		return
-	}
+	if node == nil { return }
 	visitor(node)
 
 	switch d := node.Data.(type) {
@@ -392,7 +337,9 @@ func walkAST(node *ast.Node, visitor func(n *ast.Node)) {
 }
 
 func (ctx *Context) collectGlobals(node *ast.Node) {
-	if node == nil { return }
+	if node == nil {
+		return
+	}
 
 	switch node.Type {
 	case ast.Block:
@@ -468,7 +415,9 @@ func (ctx *Context) findByteArrays(root *ast.Node) {
 	for {
 		changedInPass := false
 		visitor := func(n *ast.Node) {
-			if n == nil { return }
+			if n == nil {
+				return
+			}
 			switch n.Type {
 			case ast.VarDecl:
 				d := n.Data.(ast.VarDeclNode)
@@ -480,9 +429,13 @@ func (ctx *Context) findByteArrays(root *ast.Node) {
 				}
 			case ast.Assign:
 				d := n.Data.(ast.AssignNode)
-				if d.Lhs.Type != ast.Ident { return }
+				if d.Lhs.Type != ast.Ident {
+					return
+				}
 				lhsSym := ctx.findSymbol(d.Lhs.Data.(ast.IdentNode).Name)
-				if lhsSym == nil || lhsSym.IsByteArray { return }
+				if lhsSym == nil || lhsSym.IsByteArray {
+					return
+				}
 				rhsIsByteArray := false
 				switch d.Rhs.Type {
 				case ast.String:
@@ -499,7 +452,9 @@ func (ctx *Context) findByteArrays(root *ast.Node) {
 			}
 		}
 		walkAST(root, visitor)
-		if !changedInPass { break }
+		if !changedInPass {
+			break
+		}
 	}
 }
 
@@ -544,11 +499,43 @@ func (ctx *Context) codegenMemberAccessAddr(node *ast.Node) ir.Value {
 	if structType.Kind == ast.TYPE_POINTER {
 		structAddr, _ = ctx.codegenExpr(d.Expr)
 	} else {
-		structAddr = ctx.codegenLvalue(d.Expr)
+		// Check if this is a struct parameter (which is passed as pointer)
+		if d.Expr.Type == ast.Ident {
+			name := d.Expr.Data.(ast.IdentNode).Name
+			if sym := ctx.findSymbol(name); sym != nil {
+				// Check if this is a function parameter that has struct type
+				isStructParam := false
+				if sym.Node != nil && sym.Node.Parent != nil && sym.Node.Parent.Type == ast.FuncDecl {
+					// Resolve the struct type
+					paramStructType := structType
+					if paramStructType != nil && paramStructType.Kind != ast.TYPE_STRUCT && paramStructType.Name != "" {
+						if typeSym := ctx.findTypeSymbol(paramStructType.Name); typeSym != nil && typeSym.BxType.Kind == ast.TYPE_STRUCT {
+							paramStructType = typeSym.BxType
+						}
+					}
+					if paramStructType != nil && paramStructType.Kind == ast.TYPE_STRUCT {
+						isStructParam = true
+					}
+				}
+
+				if isStructParam {
+					// For struct parameters, use the parameter value directly (it's already a pointer)
+					structAddr, _ = ctx.codegenExpr(d.Expr)
+				} else {
+					structAddr = ctx.codegenLvalue(d.Expr)
+				}
+			} else {
+				structAddr = ctx.codegenLvalue(d.Expr)
+			}
+		} else {
+			structAddr = ctx.codegenLvalue(d.Expr)
+		}
 	}
 
 	baseType := structType
-	if baseType.Kind == ast.TYPE_POINTER { baseType = baseType.Base }
+	if baseType.Kind == ast.TYPE_POINTER {
+		baseType = baseType.Base
+	}
 
 	if baseType.Kind != ast.TYPE_STRUCT && baseType.Name != "" {
 		if sym := ctx.findTypeSymbol(baseType.Name); sym != nil && sym.BxType.Kind == ast.TYPE_STRUCT {
@@ -564,10 +551,13 @@ func (ctx *Context) codegenMemberAccessAddr(node *ast.Node) ir.Value {
 	var offset int64
 	found := false
 	memberName := d.Member.Data.(ast.IdentNode).Name
+
 	for _, fieldNode := range baseType.Fields {
 		fieldData := fieldNode.Data.(ast.VarDeclNode)
 		fieldAlign := ctx.getAlignof(fieldData.Type)
+
 		offset = util.AlignUp(offset, fieldAlign)
+
 		if fieldData.Name == memberName {
 			found = true
 			break
@@ -580,7 +570,9 @@ func (ctx *Context) codegenMemberAccessAddr(node *ast.Node) ir.Value {
 		return nil
 	}
 
-	if offset == 0 { return structAddr }
+	if offset == 0 {
+		return structAddr
+	}
 
 	resultAddr := ctx.newTemp()
 	ctx.addInstr(&ir.Instruction{
@@ -652,7 +644,9 @@ func (ctx *Context) codegenLogicalCond(node *ast.Node, trueL, falseL *ir.Label) 
 }
 
 func (ctx *Context) codegenExpr(node *ast.Node) (result ir.Value, terminates bool) {
-	if node == nil { return &ir.Const{Value: 0}, false }
+	if node == nil {
+		return &ir.Const{Value: 0}, false
+	}
 
 	switch node.Type {
 	case ast.Number:
@@ -668,6 +662,8 @@ func (ctx *Context) codegenExpr(node *ast.Node) (result ir.Value, terminates boo
 		return ctx.codegenIdent(node)
 	case ast.Assign:
 		return ctx.codegenAssign(node)
+	case ast.MultiAssign:
+		return ctx.codegenMultiAssign(node)
 	case ast.BinaryOp:
 		return ctx.codegenBinaryOp(node)
 	case ast.UnaryOp:
@@ -685,15 +681,21 @@ func (ctx *Context) codegenExpr(node *ast.Node) (result ir.Value, terminates boo
 		return ctx.codegenFuncCall(node)
 	case ast.TypeCast:
 		return ctx.codegenTypeCast(node)
+	case ast.TypeOf:
+		return ctx.codegenTypeOf(node)
 	case ast.Ternary:
 		return ctx.codegenTernary(node)
 	case ast.AutoAlloc:
 		return ctx.codegenAutoAlloc(node)
 	case ast.StructLiteral:
 		return ctx.codegenStructLiteral(node)
+	case ast.ArrayLiteral:
+		return ctx.codegenArrayLiteral(node)
 	case ast.MemberAccess:
 		addr := ctx.codegenMemberAccessAddr(node)
-		if addr == nil { return nil, true }
+		if addr == nil {
+			return nil, true
+		}
 		return ctx.genLoad(addr, node.Typ), false
 	}
 	util.Error(node.Tok, "Internal error: unhandled expression type in codegen: %v", node.Type)
@@ -701,11 +703,15 @@ func (ctx *Context) codegenExpr(node *ast.Node) (result ir.Value, terminates boo
 }
 
 func (ctx *Context) codegenStmt(node *ast.Node) (terminates bool) {
-	if node == nil { return false }
+	if node == nil {
+		return false
+	}
 	switch node.Type {
 	case ast.Block:
 		isRealBlock := !node.Data.(ast.BlockNode).IsSynthetic
-		if isRealBlock { ctx.enterScope() }
+		if isRealBlock {
+			ctx.enterScope()
+		}
 		var blockTerminates bool
 		for _, stmt := range node.Data.(ast.BlockNode).Stmts {
 			if blockTerminates {
@@ -719,7 +725,9 @@ func (ctx *Context) codegenStmt(node *ast.Node) (terminates bool) {
 			}
 			blockTerminates = ctx.codegenStmt(stmt)
 		}
-		if isRealBlock { ctx.exitScope() }
+		if isRealBlock {
+			ctx.exitScope()
+		}
 		return blockTerminates
 
 	case ast.FuncDecl:
@@ -733,7 +741,14 @@ func (ctx *Context) codegenStmt(node *ast.Node) (terminates bool) {
 			ctx.codegenVarDecl(decl)
 		}
 		return false
-	case ast.TypeDecl, ast.Directive, ast.EnumDecl:
+	case ast.TypeDecl, ast.Directive:
+		return false
+	case ast.EnumDecl:
+		// Process enum members as global variable declarations
+		d := node.Data.(ast.EnumDeclNode)
+		for _, memberNode := range d.Members {
+			ctx.codegenVarDecl(memberNode)
+		}
 		return false
 	case ast.ExtrnDecl:
 		d := node.Data.(ast.ExtrnDeclNode)
@@ -768,13 +783,17 @@ func (ctx *Context) codegenStmt(node *ast.Node) (terminates bool) {
 		return true
 
 	case ast.Break:
-		if ctx.breakLabel == nil { util.Error(node.Tok, "'break' not in a loop or switch") }
+		if ctx.breakLabel == nil {
+			util.Error(node.Tok, "'break' not in a loop or switch")
+		}
 		ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{ctx.breakLabel}})
 		ctx.currentBlock = nil
 		return true
 
 	case ast.Continue:
-		if ctx.continueLabel == nil { util.Error(node.Tok, "'continue' not in a loop") }
+		if ctx.continueLabel == nil {
+			util.Error(node.Tok, "'continue' not in a loop")
+		}
 		ctx.addInstr(&ir.Instruction{Op: ir.OpJmp, Args: []ir.Value{ctx.continueLabel}})
 		ctx.currentBlock = nil
 		return true
@@ -821,14 +840,18 @@ func (ctx *Context) codegenSwitch(node *ast.Node) bool {
 	var caseOrder []*ast.Node
 	var findCasesRecursive func(*ast.Node)
 	findCasesRecursive = func(n *ast.Node) {
-		if n == nil || (n.Type == ast.Switch && n != node) { return }
+		if n == nil || (n.Type == ast.Switch && n != node) {
+			return
+		}
 		if n.Type == ast.Case || n.Type == ast.Default {
 			if _, exists := caseLabels[n]; !exists {
 				label := ctx.newLabel()
 				caseLabels[n] = label
 				caseOrder = append(caseOrder, n)
 				if n.Type == ast.Default {
-					if defaultTarget != nil { util.Error(n.Tok, "multiple default labels in switch") }
+					if defaultTarget != nil {
+						util.Error(n.Tok, "multiple default labels in switch")
+					}
 					defaultTarget = label
 				}
 			}
@@ -853,7 +876,9 @@ func (ctx *Context) codegenSwitch(node *ast.Node) bool {
 	}
 	findCasesRecursive(d.Body)
 
-	if defaultTarget == nil { defaultTarget = endLabel }
+	if defaultTarget == nil {
+		defaultTarget = endLabel
+	}
 
 	for _, caseStmt := range caseOrder {
 		if caseStmt.Type == ast.Case {
@@ -901,7 +926,9 @@ func (ctx *Context) codegenSwitch(node *ast.Node) bool {
 }
 
 func (ctx *Context) findAllAutosInFunc(node *ast.Node, autoVars *[]autoVarInfo, definedNames map[string]bool) {
-	if node == nil { return }
+	if node == nil {
+		return
+	}
 	if node.Type == ast.VarDecl {
 		varData := node.Data.(ast.VarDeclNode)
 		if !definedNames[varData.Name] {
@@ -966,7 +993,9 @@ func (ctx *Context) codegenFuncDecl(node *ast.Node) {
 		ctx.inlineAsm += fmt.Sprintf(".globl %s\n%s:\n\t%s\n", d.Name, d.Name, asmCode)
 		return
 	}
-	if d.Body == nil { return }
+	if d.Body == nil {
+		return
+	}
 
 	irReturnType := ir.GetType(d.ReturnType, ctx.wordSize)
 	fn := &ir.Func{
@@ -1065,7 +1094,9 @@ func (ctx *Context) codegenFuncDecl(node *ast.Node) {
 						break
 					}
 				}
-				if originalIndex == 1 { isVec = true }
+				if originalIndex == 1 {
+					isVec = true
+				}
 			}
 		} else {
 			varData := local.Node.Data.(ast.VarDeclNode)
@@ -1126,21 +1157,22 @@ func (ctx *Context) codegenFuncDecl(node *ast.Node) {
 func (ctx *Context) codegenGlobalConst(node *ast.Node) ir.Value {
 	folded := ast.FoldConstants(node)
 	switch folded.Type {
-	case ast.Number:
-		return &ir.Const{Value: folded.Data.(ast.NumberNode).Value}
+	case ast.Number: return &ir.Const{Value: folded.Data.(ast.NumberNode).Value}
 	case ast.FloatNumber:
 		typ := ir.GetType(folded.Typ, ctx.wordSize)
 		return &ir.FloatConst{Value: folded.Data.(ast.FloatNumberNode).Value, Typ: typ}
-	case ast.String:
-		return ctx.addString(folded.Data.(ast.StringNode).Value)
-	case ast.Nil:
-		return &ir.Const{Value: 0}
+	case ast.String: return ctx.addString(folded.Data.(ast.StringNode).Value)
+	case ast.Nil: return &ir.Const{Value: 0}
 	case ast.Ident:
 		name := folded.Data.(ast.IdentNode).Name
 		sym := ctx.findSymbol(name)
 		if sym == nil {
 			util.Error(node.Tok, "Undefined symbol '%s' in global initializer", name)
 			return nil
+		}
+		// Try to evaluate as a constant expression (for enum constants)
+		if val, ok := ctx.evalConstExpr(folded); ok {
+			return &ir.Const{Value: val}
 		}
 		return sym.IRVal
 	case ast.AddressOf:
@@ -1182,7 +1214,9 @@ func (ctx *Context) codegenVarDecl(node *ast.Node) {
 }
 
 func (ctx *Context) codegenLocalVarDecl(d ast.VarDeclNode, sym *symbol) {
-	if len(d.InitList) == 0 { return }
+	if len(d.InitList) == 0 {
+		return
+	}
 
 	if d.IsVector || (d.Type != nil && d.Type.Kind == ast.TYPE_ARRAY) {
 		vectorPtr, _ := ctx.codegenExpr(&ast.Node{Type: ast.Ident, Data: ast.IdentNode{Name: d.Name}, Tok: sym.Node.Tok})
@@ -1220,7 +1254,16 @@ func (ctx *Context) codegenLocalVarDecl(d ast.VarDeclNode, sym *symbol) {
 		varType = initExpr.Typ
 	}
 
-	if sym.BxType == nil || sym.BxType.Kind == ast.TYPE_UNTYPED { sym.BxType = varType }
+	if sym.BxType == nil || sym.BxType.Kind == ast.TYPE_UNTYPED {
+		sym.BxType = varType
+	}
+
+	// Resolve named struct types to their actual definitions
+	if varType != nil && varType.Kind != ast.TYPE_STRUCT && varType.Name != "" {
+		if typeSym := ctx.findTypeSymbol(varType.Name); typeSym != nil && typeSym.BxType.Kind == ast.TYPE_STRUCT {
+			varType = typeSym.BxType
+		}
+	}
 
 	if varType != nil && varType.Kind == ast.TYPE_STRUCT {
 		rvalPtr, _ := ctx.codegenExpr(initExpr)
@@ -1248,7 +1291,9 @@ func (ctx *Context) codegenGlobalVarDecl(d ast.VarDeclNode, sym *symbol) {
 		if structSize > 0 {
 			globalData.Items = append(globalData.Items, ir.DataItem{Typ: ir.TypeB, Count: int(structSize)})
 		}
-		if len(globalData.Items) > 0 { ctx.prog.Globals = append(ctx.prog.Globals, globalData) }
+		if len(globalData.Items) > 0 {
+			ctx.prog.Globals = append(ctx.prog.Globals, globalData)
+		}
 		return
 	}
 
@@ -1290,7 +1335,9 @@ func (ctx *Context) codegenGlobalVarDecl(d ast.VarDeclNode, sym *symbol) {
 		for _, init := range d.InitList {
 			val := ctx.codegenGlobalConst(init)
 			itemType := elemType
-			if _, ok := val.(*ir.Global); ok { itemType = ir.TypePtr }
+			if _, ok := val.(*ir.Global); ok {
+				itemType = ir.TypePtr
+			}
 			globalData.Items = append(globalData.Items, ir.DataItem{Typ: itemType, Value: val})
 		}
 		initializedElements := int64(len(d.InitList))
@@ -1301,5 +1348,7 @@ func (ctx *Context) codegenGlobalVarDecl(d ast.VarDeclNode, sym *symbol) {
 		globalData.Items = append(globalData.Items, ir.DataItem{Typ: elemType, Count: int(numElements)})
 	}
 
-	if len(globalData.Items) > 0 { ctx.prog.Globals = append(ctx.prog.Globals, globalData) }
+	if len(globalData.Items) > 0 {
+		ctx.prog.Globals = append(ctx.prog.Globals, globalData)
+	}
 }

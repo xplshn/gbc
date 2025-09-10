@@ -22,7 +22,7 @@ import (
 func main() {
 	app := cli.NewApp("gbc")
 	app.Synopsis = "[options] <input.b> ..."
-	app.Description = "A compiler for the B programming language and its extensions, written in Go."
+	app.Description = "A compiler for the B programming language with modern extensions. Like stepping into a time machine, but with better error messages."
 	app.Authors = []string{"xplshn"}
 	app.Repository = "<https://github.com/xplshn/gbc>"
 	app.Since = 2025
@@ -36,11 +36,13 @@ func main() {
 		userIncludePaths []string
 		libRequests      []string
 		pedantic         bool
+		dumpIR           bool
 	)
 
 	fs := app.FlagSet
 	fs.String(&outFile, "output", "o", "a.out", "Place the output into <file>.", "file")
 	fs.String(&target, "target", "t", "qbe", "Set the backend and target ABI.", "backend/target")
+	fs.Bool(&dumpIR, "dump-ir", "d", false, "Dump the intermediate representation and exit.")
 	fs.List(&userIncludePaths, "include", "I", []string{}, "Add a directory to the include path.", "path")
 	fs.List(&linkerArgs, "linker-arg", "L", []string{}, "Pass an argument to the linker.", "arg")
 	fs.List(&compilerArgs, "compiler-arg", "C", []string{}, "Pass a compiler-specific argument (e.g., -C linker_args='-s').", "arg")
@@ -51,14 +53,14 @@ func main() {
 	cfg := config.NewConfig()
 	warningFlags, featureFlags := cfg.SetupFlagGroups(fs)
 
-	// Actual compilation pipeline
+	// Main compilation pipeline
 	app.Action = func(inputFiles []string) error {
-		// Handle pedantic flag first, as it can affect other settings.
+		// Pedantic flag affects everything else
 		if pedantic {
 			cfg.SetWarning(config.WarnPedantic, true)
 		}
 
-		// Apply warning flag updates to config
+		// Apply warning flags
 		for i, entry := range warningFlags {
 			if entry.Enabled != nil && *entry.Enabled {
 				cfg.SetWarning(config.Warning(i), true)
@@ -68,7 +70,7 @@ func main() {
 			}
 		}
 
-		// Apply feature flag updates to config
+		// Apply feature flags
 		for i, entry := range featureFlags {
 			if entry.Enabled != nil && *entry.Enabled {
 				cfg.SetFeature(config.Feature(i), true)
@@ -83,15 +85,15 @@ func main() {
 			util.Error(token.Token{}, err.Error())
 		}
 
-		// Set target, defaulting to the host if not specified
+		// Set target architecture
 		cfg.SetTarget(runtime.GOOS, runtime.GOARCH, target)
 
-		// Populate config from parsed command-line flags
+		// Copy over command line settings
 		cfg.LinkerArgs = append(cfg.LinkerArgs, linkerArgs...)
 		cfg.LibRequests = append(cfg.LibRequests, libRequests...)
 		cfg.UserIncludePaths = append(cfg.UserIncludePaths, userIncludePaths...)
 
-		// Process compiler-specific arguments (-C)
+		// Handle compiler args (-C)
 		for _, carg := range compilerArgs {
 			if parts := strings.SplitN(carg, "=", 2); len(parts) == 2 && parts[0] == "linker_args" {
 				parsedArgs, err := config.ParseCLIString(parts[1])
@@ -102,12 +104,12 @@ func main() {
 			}
 		}
 
-		// PASS 1: Tokenize and parse initial files to process directives.
+		// First pass: scan for directives
 		fmt.Println("----------------------")
 		records, allTokens := readAndTokenizeFiles(inputFiles, cfg)
 		util.SetSourceFiles(records)
 		p := parser.NewParser(allTokens, cfg)
-		p.Parse() // populates cfg with directive info
+		p.Parse() // picks up directives
 
 		// Now that all directives are processed, determine the final list of source files.
 		finalInputFiles := processInputFiles(inputFiles, cfg)
@@ -115,7 +117,7 @@ func main() {
 			util.Error(token.Token{}, "no input files specified.")
 		}
 
-		// PASS 2: Re-tokenize and parse the complete set of files for compilation.
+		// Second pass: compile everything
 		isTyped := cfg.IsFeatureEnabled(config.FeatTyped)
 		fmt.Printf("Tokenizing %d source file(s) (Typed Pass: %v)...\n", len(finalInputFiles), isTyped)
 		fullRecords, fullTokens := readAndTokenizeFiles(finalInputFiles, cfg)
@@ -125,33 +127,45 @@ func main() {
 		fullParser := parser.NewParser(fullTokens, cfg)
 		astRoot := fullParser.Parse()
 
-		fmt.Println("Constant folding...")
+		fmt.Println("Folding constants...")
 		astRoot = ast.FoldConstants(astRoot)
 
-		if cfg.IsFeatureEnabled(config.FeatTyped) { // Re-check after directives
+		if cfg.IsFeatureEnabled(config.FeatTyped) { // recheck after directive processing
 			fmt.Println("Type checking...")
 			tc := typeChecker.NewTypeChecker(cfg)
 			tc.Check(astRoot)
 		}
 
-		fmt.Println("Generating backend-agnostic IR...")
+		fmt.Println("Creating intermediate representation...")
 		cg := codegen.NewContext(cfg)
 		irProg, inlineAsm := cg.GenerateIR(astRoot)
 
-		fmt.Printf("Generating target code with '%s' backend...\n", cfg.BackendName)
+		// Handle --dump-ir/-d flag
+		if dumpIR {
+			fmt.Printf("Dumping IR for '%s' backend...\n", cfg.BackendName)
+			backend := selectBackend(cfg.BackendName)
+			irText, err := backend.GenerateIR(irProg, cfg)
+			if err != nil {
+				util.Error(token.Token{}, "backend IR generation failed: %v", err)
+			}
+			fmt.Print(irText)
+			return nil
+		}
+
+		fmt.Printf("Generating code with '%s' backend...\n", cfg.BackendName)
 		backend := selectBackend(cfg.BackendName)
 		backendOutput, err := backend.Generate(irProg, cfg)
 		if err != nil {
 			util.Error(token.Token{}, "backend code generation failed: %v", err)
 		}
 
-		fmt.Printf("Assembling and linking to create '%s'...\n", outFile)
+		fmt.Printf("Linking to create '%s'...\n", outFile)
 		if err := assembleAndLink(outFile, backendOutput.String(), inlineAsm, cfg.LinkerArgs); err != nil {
 			util.Error(token.Token{}, "assembler/linker failed: %v", err)
 		}
 
 		fmt.Println("----------------------")
-		fmt.Println("Compilation successful!")
+		fmt.Println("Done!")
 		return nil
 	}
 
@@ -190,8 +204,10 @@ func processInputFiles(args []string, cfg *config.Config) []string {
 
 func selectBackend(name string) codegen.Backend {
 	switch name {
-	case "qbe": return codegen.NewQBEBackend()
-	case "llvm": return codegen.NewLLVMBackend()
+	case "qbe":
+		return codegen.NewQBEBackend()
+	case "llvm":
+		return codegen.NewLLVMBackend()
 	default:
 		util.Error(token.Token{}, "unsupported backend '%s'", name)
 		return nil
@@ -237,10 +253,10 @@ func assembleAndLink(outFile, mainAsm, inlineAsm string, linkerArgs []string) er
 	}
 	mainAsmFile.Close()
 
-	// TODO: We want PIE support
-	//       - Fix LLVM backend to achieve that
-	//       - Our QBE backend seems to have some issues with PIE as well, but only two cases fail when doing `make examples`
-	// We should, by default, use `-static-pie`
+	// PIE support needs work:
+	//   - LLVM backend has issues
+	//   - QBE backend mostly works but fails on a couple examples
+	// Should default to `-static-pie` eventually
 	ccArgs := []string{"-no-pie", "-o", outFile, mainAsmFile.Name()}
 	if inlineAsm != "" {
 		inlineAsmFile, err := os.CreateTemp("", "gbc-inline-*.s")

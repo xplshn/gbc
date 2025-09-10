@@ -59,13 +59,17 @@ type Type int
 
 const (
 	TypeNone Type = iota
-	TypeB         // byte (8-bit)
-	TypeH         // half-word (16-bit)
+	TypeB         // byte (8-bit, ambiguous signedness)
+	TypeH         // half-word (16-bit, ambiguous signedness)
 	TypeW         // word (32-bit)
 	TypeL         // long (64-bit)
 	TypeS         // single float (32-bit)
 	TypeD         // double float (64-bit)
 	TypePtr
+	TypeSB // signed byte (8-bit)
+	TypeUB // unsigned byte (8-bit)
+	TypeSH // signed half-word (16-bit)
+	TypeUH // unsigned half-word (16-bit)
 )
 
 type Value interface {
@@ -78,10 +82,7 @@ type FloatConst struct{ Value float64; Typ Type }
 type Global struct{ Name string }
 type Temporary struct{ Name string; ID int }
 type Label struct{ Name string }
-type CastValue struct {
-	Value
-	TargetType string
-}
+type CastValue struct{ Value; TargetType string }
 
 func (c *Const) isValue()      {}
 func (f *FloatConst) isValue() {}
@@ -108,16 +109,9 @@ type Func struct {
 	Node          *ast.Node
 }
 
-type Param struct {
-	Name string
-	Typ  Type
-	Val  Value
-}
+type Param struct{ Name string; Typ Type; Val Value }
 
-type BasicBlock struct {
-	Label        *Label
-	Instructions []*Instruction
-}
+type BasicBlock struct{ Label *Label; Instructions []*Instruction }
 
 type Instruction struct {
 	Op          Op
@@ -147,40 +141,45 @@ type Data struct {
 	Items   []DataItem
 }
 
-type DataItem struct {
-	Typ   Type
-	Value Value
-	Count int
-}
+type DataItem struct{ Typ Type; Value Value; Count int }
 
 func GetType(typ *ast.BxType, wordSize int) Type {
-	if typ == nil || typ.Kind == ast.TYPE_UNTYPED { return wordTypeFromSize(wordSize) }
+	if typ == nil || typ.Kind == ast.TYPE_UNTYPED { return typeFromSize(wordSize, false) }
 
 	switch typ.Kind {
-	case ast.TYPE_UNTYPED_INT: return wordTypeFromSize(wordSize)
-	case ast.TYPE_UNTYPED_FLOAT: return TypeS
+	case ast.TYPE_LITERAL_INT: return typeFromSize(wordSize, false)
+	case ast.TYPE_LITERAL_FLOAT: return typeFromSize(wordSize, true)
 	case ast.TYPE_VOID: return TypeNone
 	case ast.TYPE_POINTER, ast.TYPE_ARRAY, ast.TYPE_STRUCT: return TypePtr
+	case ast.TYPE_ENUM: return typeFromSize(wordSize, false)
 	case ast.TYPE_FLOAT:
-		switch typ.Name {
-		case "float", "float32": return TypeS
-		case "float64": return TypeD
-		default: return TypeS
-		}
+		size := getTypeSizeByName(typ.Name, wordSize)
+		return typeFromSize(int(size), true)
 	case ast.TYPE_PRIMITIVE:
 		switch typ.Name {
-		case "int", "uint", "string": return wordTypeFromSize(wordSize)
+		case "int", "uint", "string": return typeFromSize(wordSize, false)
 		case "int64", "uint64": return TypeL
 		case "int32", "uint32": return TypeW
-		case "int16", "uint16": return TypeH
-		case "byte", "bool", "int8", "uint8": return TypeB
-		default: return wordTypeFromSize(wordSize)
+		case "int16": return TypeSH
+		case "uint16": return TypeUH
+		case "int8": return TypeSB
+		case "uint8": return TypeUB
+		case "byte", "bool": return TypeB
+		default: return typeFromSize(wordSize, false)
 		}
 	}
-	return wordTypeFromSize(wordSize)
+	return typeFromSize(wordSize, false)
 }
 
-func wordTypeFromSize(size int) Type {
+func typeFromSize(size int, isFloat bool) Type {
+	if isFloat {
+		switch size {
+		case 4: return TypeS
+		case 8: return TypeD
+		default: return TypeD
+		}
+	}
+
 	switch size {
 	case 8: return TypeL
 	case 4: return TypeW
@@ -190,16 +189,36 @@ func wordTypeFromSize(size int) Type {
 	}
 }
 
+func getTypeSizeByName(typeName string, wordSize int) int64 {
+	switch typeName {
+	case "int64", "uint64", "float64": return 8
+	case "int32", "uint32", "float32": return 4
+	case "int16", "uint16": return 2
+	case "int8", "uint8", "byte", "bool": return 1
+	case "int", "uint", "string", "float": return int64(wordSize)
+	}
+	return 0
+}
+
+type TypeSizeResolver struct{ wordSize int }
+
+func NewTypeSizeResolver(wordSize int) *TypeSizeResolver { return &TypeSizeResolver{wordSize: wordSize} }
+
+func (r *TypeSizeResolver) GetTypeSize(typeName string) int64 { return getTypeSizeByName(typeName, r.wordSize) }
+
+func floatTypeFromSize(size int) Type { return typeFromSize(size, true) }
+
 func SizeOfType(t Type, wordSize int) int64 {
 	switch t {
-	case TypeB: return 1
-	case TypeH: return 2
+	case TypeB, TypeSB, TypeUB: return 1
+	case TypeH, TypeSH, TypeUH: return 2
 	case TypeW: return 4
 	case TypeL: return 8
 	case TypeS: return 4
 	case TypeD: return 8
 	case TypePtr: return int64(wordSize)
-	default: return int64(wordSize)
+	default:
+		return int64(wordSize)
 	}
 }
 
@@ -223,9 +242,7 @@ func (p *Program) FindFunc(name string) *Func {
 func (p *Program) FindFuncSymbol(name string) *ast.Node {
 	if p.GlobalSymbols != nil {
 		if node, ok := p.GlobalSymbols[name]; ok {
-			if _, isFunc := node.Data.(ast.FuncDeclNode); isFunc {
-				return node
-			}
+			if _, isFunc := node.Data.(ast.FuncDeclNode); isFunc { return node }
 		}
 	}
 	return nil

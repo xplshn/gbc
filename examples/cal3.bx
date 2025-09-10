@@ -1,0 +1,77 @@
+extrn printf, time, localtime;
+
+/*
+ * On amd64_sysv, the C struct tm has the following layout:
+ *
+ * struct tm {
+ * int tm_sec;    // 0
+ * int tm_min;    // 4
+ * int tm_hour;   // 8
+ * int tm_mday;   // 12
+ * int tm_mon;    // 16
+ * int tm_year;   // 20
+ * int tm_wday;   // 24
+ * int tm_yday;   // 28
+ * int tm_isdst;  // 32
+ * };
+ *
+ * All members are 4-byte integers.
+ */
+
+int days_in_month(m int, y int) {
+    if (m == 1) { // February
+        if ((y % 400 == 0) | ((y % 4 == 0) & (y % 100 != 0))) {
+            return (29);
+        } else {
+            return (28);
+        };
+    };
+    if ((m == 0) | (m == 2) | (m == 4) | (m == 6) | (m == 7) | (m == 9) | (m == 11)) {
+        return (31);
+    };
+    return (30);
+}
+
+int main() {
+    now := time(0);
+    tptr := localtime(&now);
+
+    byte_ptr := (byte*)tptr;
+    year  := *((int*)(byte_ptr + 20)) + 1900;
+    month := *((int*)(byte_ptr + 16));    // 0 = Jan
+    today := *((int*)(byte_ptr + 12));
+    wday  := *((int*)(byte_ptr + 24));
+
+    days := days_in_month(month, year);
+
+    printf("    %d/%d\n", month + 1, year);
+    printf("Su Mo Tu We Th Fr Sa\n");
+
+    // Calculate the weekday of the first day of the month.
+    // wday is for today, so we go back (today - 1) days.
+    // The result must be non-negative, so we add 7 before the modulo
+    first_wday := (wday - (today - 1) % 7 + 7) % 7;
+
+    i := 0;
+    while (i < first_wday) {
+        printf("   ");
+        i = i + 1;
+    };
+
+    d := 1;
+    while (d <= days) {
+        if (d == today) {
+            printf("\033[31m%2d\033[0m ", d);
+        } else {
+            printf("%2d ", d);
+        };
+
+        current_wday := (first_wday + d - 1) % 7;
+        if (current_wday == 6) { // It's Saturday, add \n
+            printf("\n");
+        };
+        d = d + 1;
+    };
+    printf("\n");
+    return (0);
+}

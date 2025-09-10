@@ -47,6 +47,7 @@ const (
 	Float64
 	StringKeyword
 	Any
+	TypeOf
 	LParen
 	RParen
 	LBrace
@@ -143,9 +144,10 @@ var KeywordMap = map[string]Type{
 	"float64":  Float64,
 	"string":   StringKeyword,
 	"any":      Any,
+	"typeof":   TypeOf,
 }
 
-// Reverse mapping from Type to the keyword string.
+// Reverse mapping from Type to the keyword string
 var TypeStrings = make(map[Type]string)
 
 func init() {

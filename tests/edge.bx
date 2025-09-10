@@ -1,0 +1,21 @@
+type struct Inner {
+    value int;
+};
+
+type struct Outer {
+    inner Inner*;
+};
+
+Outer* createOuter(val int) {
+    auto i = Inner{value: val};
+    auto o = Outer{inner: &i};
+    return (&o);
+}
+
+main() {
+    extrn printf;
+
+    auto outerPtr = createOuter(42);
+    printf("%d\n", outerPtr.inner.value);
+    return(0);
+}

@@ -1,0 +1,101 @@
+// Comprehensive tests for typeof and literal type inference
+extrn printf;
+
+main() {
+    printf("=== Basic Type Tests ===\n");
+
+    // Primitive types
+    int i;
+    i = 42;
+    printf("int: %s\n", typeof(i));
+
+    uint ui;
+    ui = 42;
+    printf("uint: %s\n", typeof(ui));
+
+    int8 i8;
+    i8 = 42;
+    printf("int8: %s\n", typeof(i8));
+
+    uint8 ui8;
+    ui8 = 42;
+    printf("uint8: %s\n", typeof(ui8));
+
+    int16 i16;
+    i16 = 42;
+    printf("int16: %s\n", typeof(i16));
+
+    uint16 ui16;
+    ui16 = 42;
+    printf("uint16: %s\n", typeof(ui16));
+
+    int32 i32;
+    i32 = 42;
+    printf("int32: %s\n", typeof(i32));
+
+    uint32 ui32;
+    ui32 = 42;
+    printf("uint32: %s\n", typeof(ui32));
+
+    int64 i64;
+    i64 = 42;
+    printf("int64: %s\n", typeof(i64));
+
+    uint64 ui64;
+    ui64 = 42;
+    printf("uint64: %s\n", typeof(ui64));
+
+    // Float types
+    float f;
+    f = 3.14;
+    printf("float: %s\n", typeof(f));
+
+    float32 f32;
+    f32 = 3.14;
+    printf("float32: %s\n", typeof(f32));
+
+    float64 f64;
+    f64 = 3.14;
+    printf("float64: %s\n", typeof(f64));
+
+    // Other types
+    bool b;
+    b = 1;
+    printf("bool: %s\n", typeof(b));
+
+    byte by;
+    by = 65;
+    printf("byte: %s\n", typeof(by));
+
+    printf("\n=== Literal Types ===\n");
+
+    // Integer literals should default to int
+    printf("42: %s\n", typeof(42));
+    printf("0x42: %s\n", typeof(0x42));
+    printf("0755: %s\n", typeof(0755));
+
+    // Float literals should default to float
+    printf("3.14: %s\n", typeof(3.14));
+    printf("0.5: %s\n", typeof(0.5));
+    printf("1.0e-5: %s\n", typeof(1.0e-5));
+
+    // String literals
+    printf("\"hello\": %s\n", typeof("hello"));
+
+    // Nil
+    printf("nil: %s\n", typeof(nil));
+
+    printf("\n=== Auto Variables ===\n");
+
+    // Auto variables with literals
+    auto auto_int = 42;
+    printf("auto int: %s\n", typeof(auto_int));
+
+    auto auto_float = 3.14;
+    printf("auto float: %s\n", typeof(auto_float));
+
+    auto auto_string = "hello";
+    printf("auto string: %s\n", typeof(auto_string));
+
+    return(0);
+}

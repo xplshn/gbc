@@ -1,8 +1,10 @@
 package ast
 
 import (
+	"fmt"
 	"github.com/xplshn/gbc/pkg/token"
 	"github.com/xplshn/gbc/pkg/util"
+	"strings"
 )
 
 type NodeType int
@@ -14,6 +16,7 @@ const (
 	Ident
 	Nil
 	Assign
+	MultiAssign
 	BinaryOp
 	UnaryOp
 	PostfixOp
@@ -25,7 +28,9 @@ const (
 	AutoAlloc
 	MemberAccess
 	TypeCast
+	TypeOf
 	StructLiteral
+	ArrayLiteral
 	FuncDecl
 	VarDecl
 	MultiVarDecl
@@ -68,18 +73,18 @@ const (
 	TYPE_FLOAT
 	TYPE_UNTYPED
 	TYPE_NIL
-	TYPE_UNTYPED_INT
-	TYPE_UNTYPED_FLOAT
+	TYPE_LITERAL_INT
+	TYPE_LITERAL_FLOAT
 )
 
 type BxType struct {
-	Kind      BxTypeKind
-	Base      *BxType
-	Name      string
-	ArraySize *Node
-	IsConst   bool
-	StructTag string
-	Fields    []*Node
+	Kind        BxTypeKind
+	Base        *BxType
+	Name        string
+	ArraySize   *Node
+	IsConst     bool
+	StructTag   string
+	Fields      []*Node
 	EnumMembers []*Node
 }
 
@@ -103,8 +108,8 @@ var (
 	TypeUntyped      = &BxType{Kind: TYPE_UNTYPED, Name: "untyped"}
 	TypeString       = &BxType{Kind: TYPE_POINTER, Base: TypeByte, Name: "string"}
 	TypeNil          = &BxType{Kind: TYPE_NIL, Name: "nil"}
-	TypeUntypedInt   = &BxType{Kind: TYPE_UNTYPED_INT, Name: "untyped int"}
-	TypeUntypedFloat = &BxType{Kind: TYPE_UNTYPED_FLOAT, Name: "untyped float"}
+	TypeLiteralInt   = &BxType{Kind: TYPE_LITERAL_INT, Name: "int"}
+	TypeLiteralFloat = &BxType{Kind: TYPE_LITERAL_FLOAT, Name: "float"}
 )
 
 type NumberNode struct{ Value int64 }
@@ -112,18 +117,25 @@ type FloatNumberNode struct{ Value float64 }
 type StringNode struct{ Value string }
 type NilNode struct{}
 type IdentNode struct{ Name string }
-type AssignNode struct{ Op token.Type; Lhs, Rhs *Node }
-type BinaryOpNode struct{ Op token.Type; Left, Right *Node }
-type UnaryOpNode struct{ Op token.Type; Expr *Node }
-type PostfixOpNode struct{ Op token.Type; Expr *Node }
+type AssignNode struct { Op token.Type; Lhs, Rhs *Node }
+type MultiAssignNode struct { Op token.Type; Lhs, Rhs []*Node }
+type BinaryOpNode struct { Op token.Type; Left, Right *Node }
+type UnaryOpNode struct { Op token.Type; Expr *Node }
+type PostfixOpNode struct { Op token.Type; Expr *Node }
 type IndirectionNode struct{ Expr *Node }
 type AddressOfNode struct{ LValue *Node }
 type TernaryNode struct{ Cond, ThenExpr, ElseExpr *Node }
 type SubscriptNode struct{ Array, Index *Node }
 type MemberAccessNode struct{ Expr, Member *Node }
-type TypeCastNode struct{ Expr *Node; TargetType *BxType }
-type StructLiteralNode struct{ TypeNode *Node; Values []*Node; Names []*Node }
-type FuncCallNode struct{ FuncExpr *Node; Args []*Node }
+type TypeCastNode struct { Expr *Node; TargetType *BxType }
+type TypeOfNode struct{ Expr *Node }
+type StructLiteralNode struct {
+	TypeNode *Node
+	Values   []*Node
+	Names    []*Node
+}
+type ArrayLiteralNode struct { ElementType *BxType; Values []*Node }
+type FuncCallNode struct { FuncExpr *Node; Args []*Node }
 type AutoAllocNode struct{ Size *Node }
 type FuncDeclNode struct {
 	Name       string
@@ -143,20 +155,20 @@ type VarDeclNode struct {
 	IsDefine    bool
 }
 type MultiVarDeclNode struct{ Decls []*Node }
-type TypeDeclNode struct{ Name string; Type *BxType }
-type EnumDeclNode struct{ Name string; Members []*Node }
-type ExtrnDeclNode struct{ Names []*Node }
+type TypeDeclNode struct { Name string; Type *BxType }
+type EnumDeclNode struct { Name string; Members []*Node }
+type ExtrnDeclNode struct { Names []*Node; ReturnType *BxType }
 type IfNode struct{ Cond, ThenBody, ElseBody *Node }
 type WhileNode struct{ Cond, Body *Node }
 type ReturnNode struct{ Expr *Node }
-type BlockNode struct{ Stmts []*Node; IsSynthetic bool }
+type BlockNode struct { Stmts []*Node; IsSynthetic bool }
 type GotoNode struct{ Label string }
 type SwitchNode struct{ Expr, Body *Node }
-type CaseNode struct{ Values []*Node; Body *Node }
+type CaseNode struct { Values []*Node; Body *Node }
 type DefaultNode struct{ Body *Node }
 type BreakNode struct{}
 type ContinueNode struct{}
-type LabelNode struct{ Name string; Stmt *Node }
+type LabelNode struct { Name string; Stmt *Node }
 type AsmStmtNode struct{ Code string }
 type DirectiveNode struct{ Name string }
 
@@ -170,19 +182,27 @@ func newNode(tok token.Token, nodeType NodeType, data interface{}, children ...*
 
 func NewNumber(tok token.Token, value int64) *Node {
 	node := newNode(tok, Number, NumberNode{Value: value})
-	node.Typ = TypeUntypedInt
+	node.Typ = TypeLiteralInt
 	return node
 }
 func NewFloatNumber(tok token.Token, value float64) *Node {
 	node := newNode(tok, FloatNumber, FloatNumberNode{Value: value})
-	node.Typ = TypeUntypedFloat
+	node.Typ = TypeLiteralFloat
 	return node
 }
-func NewString(tok token.Token, value string) *Node { return newNode(tok, String, StringNode{Value: value}) }
-func NewNil(tok token.Token) *Node                 { return newNode(tok, Nil, NilNode{}) }
-func NewIdent(tok token.Token, name string) *Node   { return newNode(tok, Ident, IdentNode{Name: name}) }
+func NewString(tok token.Token, value string) *Node {
+	return newNode(tok, String, StringNode{Value: value})
+}
+func NewNil(tok token.Token) *Node                { return newNode(tok, Nil, NilNode{}) }
+func NewIdent(tok token.Token, name string) *Node { return newNode(tok, Ident, IdentNode{Name: name}) }
 func NewAssign(tok token.Token, op token.Type, lhs, rhs *Node) *Node {
 	return newNode(tok, Assign, AssignNode{Op: op, Lhs: lhs, Rhs: rhs}, lhs, rhs)
+}
+func NewMultiAssign(tok token.Token, op token.Type, lhs, rhs []*Node) *Node {
+	var allChildren []*Node
+	allChildren = append(allChildren, lhs...)
+	allChildren = append(allChildren, rhs...)
+	return newNode(tok, MultiAssign, MultiAssignNode{Op: op, Lhs: lhs, Rhs: rhs}, allChildren...)
 }
 func NewBinaryOp(tok token.Token, op token.Type, left, right *Node) *Node {
 	return newNode(tok, BinaryOp, BinaryOpNode{Op: op, Left: left, Right: right}, left, right)
@@ -211,6 +231,9 @@ func NewMemberAccess(tok token.Token, expr, member *Node) *Node {
 func NewTypeCast(tok token.Token, expr *Node, targetType *BxType) *Node {
 	return newNode(tok, TypeCast, TypeCastNode{Expr: expr, TargetType: targetType}, expr)
 }
+func NewTypeOf(tok token.Token, expr *Node) *Node {
+	return newNode(tok, TypeOf, TypeOfNode{Expr: expr}, expr)
+}
 func NewStructLiteral(tok token.Token, typeNode *Node, values []*Node, names []*Node) *Node {
 	node := newNode(tok, StructLiteral, StructLiteralNode{TypeNode: typeNode, Values: values, Names: names}, typeNode)
 	for _, v := range values {
@@ -218,6 +241,13 @@ func NewStructLiteral(tok token.Token, typeNode *Node, values []*Node, names []*
 	}
 	for _, n := range names {
 		if n != nil { n.Parent = node }
+	}
+	return node
+}
+func NewArrayLiteral(tok token.Token, elementType *BxType, values []*Node) *Node {
+	node := newNode(tok, ArrayLiteral, ArrayLiteralNode{ElementType: elementType, Values: values})
+	for _, v := range values {
+		v.Parent = node
 	}
 	return node
 }
@@ -266,8 +296,8 @@ func NewEnumDecl(tok token.Token, name string, members []*Node) *Node {
 	}
 	return node
 }
-func NewExtrnDecl(tok token.Token, names []*Node) *Node {
-	node := newNode(tok, ExtrnDecl, ExtrnDeclNode{Names: names})
+func NewExtrnDecl(tok token.Token, names []*Node, returnType *BxType) *Node {
+	node := newNode(tok, ExtrnDecl, ExtrnDeclNode{Names: names, ReturnType: returnType})
 	for _, n := range names {
 		n.Parent = node
 	}
@@ -318,19 +348,19 @@ func NewDirective(tok token.Token, name string) *Node {
 }
 
 func FoldConstants(node *Node) *Node {
-	if node == nil { return nil }
+	if node == nil {
+		return nil
+	}
 
 	switch d := node.Data.(type) {
-	case AssignNode:
-		d.Rhs = FoldConstants(d.Rhs)
+	case AssignNode: d.Rhs = FoldConstants(d.Rhs); node.Data = d
+	case MultiAssignNode: 
+		for i, rhs := range d.Rhs {
+			d.Rhs[i] = FoldConstants(rhs)
+		}
 		node.Data = d
-	case BinaryOpNode:
-		d.Left = FoldConstants(d.Left)
-		d.Right = FoldConstants(d.Right)
-		node.Data = d
-	case UnaryOpNode:
-		d.Expr = FoldConstants(d.Expr)
-		node.Data = d
+	case BinaryOpNode: d.Left = FoldConstants(d.Left); d.Right = FoldConstants(d.Right); node.Data = d
+	case UnaryOpNode: d.Expr = FoldConstants(d.Expr); node.Data = d
 	case TernaryNode:
 		d.Cond = FoldConstants(d.Cond)
 		if d.Cond.Type == Number {
@@ -367,14 +397,21 @@ func FoldConstants(node *Node) *Node {
 			case token.Lte: if l <= r { res = 1 }
 			case token.Gte: if l >= r { res = 1 }
 			case token.Slash:
-				if r == 0 { util.Error(node.Tok, "Compile-time division by zero") }
+				if r == 0 {
+					util.Error(node.Tok, "Compile-time division by zero")
+				}
 				res = l / r
 			case token.Rem:
-				if r == 0 { util.Error(node.Tok, "Compile-time modulo by zero") }
+				if r == 0 {
+					util.Error(node.Tok, "Compile-time modulo by zero")
+				}
 				res = l % r
-			default: folded = false
+			default:
+				folded = false
 			}
-			if folded { return NewNumber(node.Tok, res) }
+			if folded {
+				return NewNumber(node.Tok, res)
+			}
 		}
 	case UnaryOp:
 		d := node.Data.(UnaryOpNode)
@@ -388,8 +425,56 @@ func FoldConstants(node *Node) *Node {
 			case token.Not: if val == 0 { res = 1 }
 			default: folded = false
 			}
-			if folded { return NewNumber(node.Tok, res) }
+			if folded {
+				return NewNumber(node.Tok, res)
+			}
 		}
 	}
 	return node
+}
+
+// TypeToString converts a BxType to its string representation
+func TypeToString(t *BxType) string {
+	if t == nil {
+		return "<nil>"
+	}
+	var sb strings.Builder
+	if t.IsConst {
+		sb.WriteString("const ")
+	}
+	switch t.Kind {
+	case TYPE_PRIMITIVE, TYPE_BOOL, TYPE_FLOAT, TYPE_LITERAL_INT, TYPE_LITERAL_FLOAT:
+		sb.WriteString(t.Name)
+	case TYPE_POINTER:
+		sb.WriteString("*")
+		sb.WriteString(TypeToString(t.Base))
+	case TYPE_ARRAY:
+		sb.WriteString("[]")
+		sb.WriteString(TypeToString(t.Base))
+	case TYPE_STRUCT:
+		sb.WriteString("struct ")
+		if t.Name != "" {
+			sb.WriteString(t.Name)
+		} else if t.StructTag != "" {
+			sb.WriteString(t.StructTag)
+		} else {
+			sb.WriteString("<anonymous>")
+		}
+	case TYPE_ENUM:
+		sb.WriteString("enum ")
+		if t.Name != "" {
+			sb.WriteString(t.Name)
+		} else {
+			sb.WriteString("<anonymous>")
+		}
+	case TYPE_VOID:
+		sb.WriteString("void")
+	case TYPE_UNTYPED:
+		sb.WriteString("untyped")
+	case TYPE_NIL:
+		sb.WriteString("nil")
+	default:
+		sb.WriteString(fmt.Sprintf("<unknown_type_kind_%d>", t.Kind))
+	}
+	return sb.String()
 }
