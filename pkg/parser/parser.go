@@ -167,6 +167,11 @@ func (p *Parser) parseTopLevel() *ast.Node {
 			stmt = p.parseTypedVarOrFuncDecl(true)
 		} else if p.isBxDeclarationAhead() {
 			stmt = p.parseDeclaration(false)
+		} else if p.isMultiAssignmentAhead() {
+			stmt = p.parseExpr()
+			if stmt != nil {
+				p.expect(token.Semi, "Expected ';' after multi-assignment statement")
+			}
 		} else {
 			stmt = p.parseUntypedGlobalDefinition(identTok)
 		}
@@ -210,6 +215,27 @@ func (p *Parser) isBxDeclarationAhead() bool {
 		return hasAuto
 	}
 	return false
+}
+
+func (p *Parser) isMultiAssignmentAhead() bool {
+	originalPos, originalCurrent := p.pos, p.current
+	defer func() { p.pos, p.current = originalPos, originalCurrent }()
+
+	if !p.check(token.Ident) {
+		return false
+	}
+	p.advance()
+
+	hasMultipleVars := false
+	for p.match(token.Comma) {
+		hasMultipleVars = true
+		if !p.check(token.Ident) {
+			return false
+		}
+		p.advance()
+	}
+
+	return hasMultipleVars && p.check(token.Eq)
 }
 
 func (p *Parser) isBuiltinType(tok token.Token) bool {
@@ -442,6 +468,10 @@ func (p *Parser) parseDeclaration(hasAuto bool) *ast.Node {
 	isDefine := false
 
 	if p.match(token.Define) {
+		if hasAuto {
+			util.Error(p.previous, "Cannot use ':=' in a typed declaration; use '=' instead")
+			return ast.NewVarDecl(declTok, "", ast.TypeUntyped, nil, nil, false, false, false)
+		}
 		op, isDefine = token.Define, true
 	} else if p.match(token.Eq) {
 		op = token.Eq
@@ -826,6 +856,9 @@ func (p *Parser) parseTypedVarDeclBody(startTok token.Token, declType *ast.BxTyp
 		var initList []*ast.Node
 		if p.match(token.Eq) {
 			initList = append(initList, p.parseAssignmentExpr())
+		} else if p.check(token.Define) {
+			util.Error(p.current, "Cannot use ':=' in a typed declaration; use '=' instead")
+			return ast.NewVarDecl(currentNameToken, name, finalType, nil, sizeExpr, isArr, isBracketed, false)
 		} else if !p.cfg.IsFeatureEnabled(config.FeatAllowUninitialized) {
 			util.Error(nameToken, "Initialized typed declaration is required in this mode")
 		}

@@ -821,6 +821,11 @@ func (ctx *Context) codegenStmt(node *ast.Node) (terminates bool) {
 		return false
 
 	default:
+		// Expression statements are not allowed at global scope
+		if ctx.currentFunc == nil {
+			util.Error(node.Tok, "Expression statements are not allowed at global scope")
+			return false
+		}
 		_, terminates := ctx.codegenExpr(node)
 		return terminates
 	}

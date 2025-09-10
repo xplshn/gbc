@@ -5,8 +5,11 @@ puts(arg string){
 }
 
 global_short := 10;
-auto global_auto := 20;
-auto global_multi_1, global_multi_2 := 30, 40;
+
+auto global_auto = 20;
+auto global_multi_1, global_multi_2 = 30, 40;
+
+auto global_multi_3, global_multi_4 = 80, 100;
 
 main() {
     auto local_auto;

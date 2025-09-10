@@ -210,7 +210,7 @@ void demo_enum_arrays() {
 void demo_struct_pointer_arrays() {
     printf("\nStruct pointer arrays:\n");
 
-    Point* point_ptr_array[2];
+    Point *point_ptr_array[2];
 
     point_ptr_array[0] = malloc(sizeof(Point));
     point_ptr_array[1] = malloc(sizeof(Point));
