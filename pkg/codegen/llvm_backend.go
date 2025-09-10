@@ -73,7 +73,7 @@ func (b *llvmBackend) compileLLVMIR(llvmIR string) (string, error) {
 	asmFile.Close()
 	defer os.Remove(asmFile.Name())
 
-	cmd := exec.Command("llc", "-O3", "-o", asmFile.Name(), llFile.Name())
+	cmd := exec.Command("llc", "-O2", "-o", asmFile.Name(), llFile.Name())
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("llc command failed: %w\n--- LLVM IR ---\n%s\n--- Output ---\n%s", err, llvmIR, string(output))
 	}
@@ -814,21 +814,51 @@ func (b *llvmBackend) genCall(instr *ir.Instruction) {
 	var argParts []string
 	for i, arg := range instr.Args[1:] {
 		targetType := b.wordType
+
+		// Determine the source type of the argument
+		sourceType := b.getType(arg)
+		if fc, ok := arg.(*ir.FloatConst); ok {
+			sourceType = b.formatType(fc.Typ)
+		}
+
 		if instr.ArgTypes != nil && i < len(instr.ArgTypes) {
 			requestedType := b.formatType(instr.ArgTypes[i])
 
-			// For external functions, let the linker handle type conversions
-			// Only do integer promotions for small integer types, preserve pointers and floats
-			if isExternalFunc && (requestedType == "i8" || requestedType == "i16") {
-				targetType = b.wordType
+			// - float -> double
+			// - small integers (i8, i16) -> word type (int promotion)
+			// - preserve pointers and larger types
+			if isExternalFunc {
+				if requestedType == "float" {
+					targetType = "double"
+				} else if requestedType == "i8" || requestedType == "i16" {
+					targetType = b.wordType
+				} else {
+					targetType = requestedType
+				}
 			} else {
 				targetType = requestedType
 			}
-		} else if g, ok := arg.(*ir.Global); ok {
-			if _, isString := b.prog.IsStringLabel(g.Name); isString {
-				targetType = "i8*"
+		} else {
+			// No explicit ArgTypes, infer from the argument and apply C standard promotions for external functions
+			if isExternalFunc {
+				if sourceType == "float" {
+					targetType = "double"
+				} else if sourceType == "i8" || sourceType == "i16" {
+					targetType = b.wordType
+				} else if sourceType != "unknown" {
+					targetType = sourceType
+				} else if g, ok := arg.(*ir.Global); ok {
+					if _, isString := b.prog.IsStringLabel(g.Name); isString {
+						targetType = "i8*"
+					}
+				}
+			} else if g, ok := arg.(*ir.Global); ok {
+				if _, isString := b.prog.IsStringLabel(g.Name); isString {
+					targetType = "i8*"
+				}
 			}
 		}
+
 		valStr := b.prepareArg(arg, targetType)
 		argParts = append(argParts, fmt.Sprintf("%s %s", targetType, valStr))
 	}
