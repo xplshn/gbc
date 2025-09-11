@@ -1,17 +1,15 @@
 package codegen
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
 	"github.com/xplshn/gbc/pkg/ast"
 	"github.com/xplshn/gbc/pkg/config"
 	"github.com/xplshn/gbc/pkg/ir"
-	"modernc.org/libqbe"
 )
 
-type qbeBackend struct{
+type qbeBackend struct {
 	out         *strings.Builder
 	prog        *ir.Program
 	currentFn   *ir.Func
@@ -20,16 +18,6 @@ type qbeBackend struct{
 }
 
 func NewQBEBackend() Backend { return &qbeBackend{structTypes: make(map[string]bool)} }
-
-func (b *qbeBackend) Generate(prog *ir.Program, cfg *config.Config) (*bytes.Buffer, error) {
-	qbeIR, err := b.GenerateIR(prog, cfg)
-	if err != nil { return nil, err }
-
-	var asmBuf bytes.Buffer
-	err = libqbe.Main(cfg.BackendTarget, "input.ssa", strings.NewReader(qbeIR), &asmBuf, nil)
-	if err != nil { return nil, fmt.Errorf("\n--- QBE Compilation Failed ---\nGenerated IR:\n%s\n\nlibqbe error: %w", qbeIR, err) }
-	return &asmBuf, nil
-}
 
 func (b *qbeBackend) GenerateIR(prog *ir.Program, cfg *config.Config) (string, error) {
 	var qbeIRBuilder strings.Builder
@@ -59,7 +47,9 @@ func (b *qbeBackend) gen() {
 			}
 
 			for i := 0; i < len(s); i++ {
-				if i > 0 { b.out.WriteString(", ") }
+				if i > 0 {
+					b.out.WriteString(", ")
+				}
 				b.out.WriteString(fmt.Sprintf("b %d", s[i]))
 			}
 			b.out.WriteString(", b 0 }\n")
@@ -72,15 +62,21 @@ func (b *qbeBackend) gen() {
 }
 
 func (b *qbeBackend) formatFieldType(t *ast.BxType) (string, bool) {
-	if t == nil { return b.formatType(ir.GetType(nil, b.prog.WordSize)), true }
+	if t == nil {
+		return b.formatType(ir.GetType(nil, b.prog.WordSize)), true
+	}
 	switch t.Kind {
 	case ast.TYPE_STRUCT:
 		if t.Name != "" {
-			if _, defined := b.structTypes[t.Name]; defined { return ":" + t.Name, true }
+			if _, defined := b.structTypes[t.Name]; defined {
+				return ":" + t.Name, true
+			}
 		}
 		return "", false
-	case ast.TYPE_POINTER, ast.TYPE_ARRAY: return b.formatType(ir.GetType(nil, b.prog.WordSize)), true
-	default: return b.formatType(ir.GetType(t, b.prog.WordSize)), true
+	case ast.TYPE_POINTER, ast.TYPE_ARRAY:
+		return b.formatType(ir.GetType(nil, b.prog.WordSize)), true
+	default:
+		return b.formatType(ir.GetType(t, b.prog.WordSize)), true
 	}
 }
 
@@ -427,11 +423,16 @@ func (b *qbeBackend) genCall(instr *ir.Instruction) {
 				// Select extension operation based on source type
 				var extOp string
 				switch argType {
-				case ir.TypeW: extOp = "extsw"
-				case ir.TypeUB: extOp = "extub"
-				case ir.TypeSB: extOp = "extsb"
-				case ir.TypeUH: extOp = "extuh"
-				case ir.TypeSH: extOp = "extsh"
+				case ir.TypeW:
+					extOp = "extsw"
+				case ir.TypeUB:
+					extOp = "extub"
+				case ir.TypeSB:
+					extOp = "extsb"
+				case ir.TypeUH:
+					extOp = "extuh"
+				case ir.TypeSH:
+					extOp = "extsh"
 				default:
 					extOp = "extub" // Default for ambiguous b/h types
 				}
@@ -478,7 +479,8 @@ func (b *qbeBackend) formatValue(v ir.Value) string {
 		return ""
 	}
 	switch val := v.(type) {
-	case *ir.Const: return fmt.Sprintf("%d", val.Value)
+	case *ir.Const:
+		return fmt.Sprintf("%d", val.Value)
 	case *ir.FloatConst:
 		if val.Typ == ir.TypeS {
 			// For 32-bit floats, truncate to float32 precision first
@@ -486,7 +488,8 @@ func (b *qbeBackend) formatValue(v ir.Value) string {
 			return fmt.Sprintf("s_%f", float64(float32Val))
 		}
 		return fmt.Sprintf("%s_%f", b.formatType(val.Typ), val.Value)
-	case *ir.Global: return "$" + val.Name
+	case *ir.Global:
+		return "$" + val.Name
 	case *ir.Temporary:
 		safeName := strings.NewReplacer(".", "_", "[", "_", "]", "_").Replace(val.Name)
 		if val.ID == -1 {
@@ -496,7 +499,8 @@ func (b *qbeBackend) formatValue(v ir.Value) string {
 			return fmt.Sprintf("%%.%s_%d", safeName, val.ID)
 		}
 		return fmt.Sprintf("%%t%d", val.ID)
-	case *ir.Label: return "@" + val.Name
+	case *ir.Label:
+		return "@" + val.Name
 	default:
 		return ""
 	}

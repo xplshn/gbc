@@ -8,7 +8,6 @@ import (
 
 	"github.com/xplshn/gbc/pkg/cli"
 	"github.com/xplshn/gbc/pkg/token"
-	"modernc.org/libqbe"
 )
 
 type Feature int
@@ -169,13 +168,38 @@ func NewConfig() *Config {
 	return cfg
 }
 
+// Direct implementation of libqbe.DefaultTarget copied from
+// https://gitlab.com/cznic/libqbe/-/blob/master/libqbe.go?ref_type=heads#L322
+// It is only included here because libqbe does NOT support windows OS
+
+// libqbe_defaultTarget returns the C ABI QBE target string for given goos/goarch. It
+// defaults to "amd64_sysv" on unsupported goos/goarch combinations.
+func libqbe_defaultTarget(goos, goarch string) string {
+	switch fmt.Sprintf("%s/%s", goos, goarch) {
+	case "darwin/amd64":
+		return "amd64_apple"
+	case "darwin/arm64":
+		return "arm64_apple"
+	case "freebsd/arm64":
+		return "arm64"
+	case "linux/arm64":
+		return "arm64"
+	case "linux/riscv64":
+		return "rv64"
+	default:
+		return "amd64_sysv"
+	}
+}
+
 func (c *Config) SetTarget(hostOS, hostArch, targetFlag string) {
 	c.GOOS, c.GOARCH, c.BackendName = hostOS, hostArch, "qbe"
 
 	if targetFlag != "" {
 		parts := strings.SplitN(targetFlag, "/", 2)
 		c.BackendName = parts[0]
-		if len(parts) > 1 { c.BackendTarget = parts[1] }
+		if len(parts) > 1 {
+			c.BackendTarget = parts[1]
+		}
 	}
 
 	validQBETargets := map[string]string{
@@ -185,7 +209,7 @@ func (c *Config) SetTarget(hostOS, hostArch, targetFlag string) {
 
 	if c.BackendName == "qbe" {
 		if c.BackendTarget == "" {
-			c.BackendTarget = libqbe.DefaultTarget(hostOS, hostArch)
+			c.BackendTarget = libqbe_defaultTarget(hostOS, hostArch)
 			fmt.Fprintf(os.Stderr, "gbc: info: no target specified, defaulting to host target '%s' for backend '%s'\n", c.BackendTarget, c.BackendName)
 		}
 		if goArch, ok := validQBETargets[c.BackendTarget]; ok {
