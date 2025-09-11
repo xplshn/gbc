@@ -82,7 +82,7 @@ func main() {
 
 		// Apply language standard
 		if err := cfg.ApplyStd(std); err != nil {
-			util.Error(token.Token{}, err.Error())
+			util.Error(token.Token{}, "%s", err.Error())
 		}
 
 		// Set target architecture
@@ -115,6 +115,7 @@ func main() {
 		finalInputFiles := processInputFiles(inputFiles, cfg)
 		if len(finalInputFiles) == 0 {
 			util.Error(token.Token{}, "no input files specified.")
+			fmt.Fprintln(os.Stderr, "gbc: info: tip: use '-h' flag to show help.")
 		}
 
 		// Second pass: compile everything

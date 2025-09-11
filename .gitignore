@@ -5,6 +5,7 @@ output.*
 lib/qbe/obj
 ./cbc
 ./gbc
+./gbc.exe
 examples/libb
 examples/.build
 tests/libb
@@ -14,3 +15,4 @@ output_*
 ./cmd/gtest/gtest
 ./cmd/gbc/gbc
 ./gbc
+./gbc.exe

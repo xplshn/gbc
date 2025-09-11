@@ -11,7 +11,10 @@ import (
 	"golang.org/x/term"
 )
 
-type IndentState struct { levels []uint8; baseUnit uint8 }
+type IndentState struct {
+	levels   []uint8
+	baseUnit uint8
+}
 
 func NewIndentState() *IndentState {
 	return &IndentState{
@@ -589,7 +592,9 @@ func (a *App) formatFlagGroup(sb *strings.Builder, group FlagGroup, indent *Inde
 
 func getTerminalWidth() int {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil { return 80 }
+	if err != nil {
+		return 80
+	}
 	if width < 20 {
 		return 20
 	}
