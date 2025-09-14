@@ -3,7 +3,7 @@ extrn printf, malloc;
 type struct Point {
     x int;
     y int;
-    name byte*;
+    name *byte;
 };
 
 type enum Color {
@@ -128,9 +128,9 @@ void demo_pointer_arrays() {
     printf("\nPointer arrays:\n");
 
     int values[3];
-    int* int_ptr_array[3];
-    byte* string_array[3];
-    void* void_ptr_array[3];
+    *int int_ptr_array[3];
+    *byte string_array[3];
+    *void void_ptr_array[3];
 
     values[0] = 42;
     values[1] = 84;
@@ -210,7 +210,7 @@ void demo_enum_arrays() {
 void demo_struct_pointer_arrays() {
     printf("\nStruct pointer arrays:\n");
 
-    Point *point_ptr_array[2];
+    *Point point_ptr_array[2];
 
     point_ptr_array[0] = malloc(sizeof(Point));
     point_ptr_array[1] = malloc(sizeof(Point));

@@ -260,7 +260,9 @@ func (c *Config) ApplyStd(stdName string) error {
 		{FeatExtrn, !isPedantic, true}, {FeatAsm, !isPedantic, true},
 		{FeatTyped, false, true}, {FeatShortDecl, false, true},
 		{FeatBxDeclarations, false, true}, {FeatStrictDecl, false, isPedantic},
-		{FeatFloat, false, true},
+		{FeatContinue, false, true}, {FeatNoDirectives, false, false},
+		{FeatFloat, false, true}, {FeatStrictTypes, false, false},
+		{FeatPromTypes, false, false},
 	}
 
 	switch stdName {

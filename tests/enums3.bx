@@ -22,12 +22,12 @@ Shape create_shape(c Color, x int, y int) {
 }
 
 void print_shape(s Shape) {
-    color_names := []byte*{ "RED", "GREEN", "BLUE", "YELLOW" };
+    color_names := []*byte{ "RED", "GREEN", "BLUE", "YELLOW" };
     printf("Shape: %s at (%d, %d)\n",
            color_names[s.shape_color], s.x_pos, s.y_pos);
 }
 
-void move_shape(s Shape*, dx int, dy int) {
+void move_shape(s *Shape, dx int, dy int) {
     s.x_pos = s.x_pos + dx;
     s.y_pos = s.y_pos + dy;
 }

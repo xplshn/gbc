@@ -9,8 +9,8 @@ main() {
     printf("Function-style casts: a=%d, int(a)=%d, (int(a)+1)=%d\n", a, b, c);
 
     ptr := &a;
-    byte_ptr := (byte*)ptr;
-    int_ptr := (int*)byte_ptr;
+    byte_ptr := (*byte)ptr;
+    int_ptr := (*int)byte_ptr;
     value := *int_ptr;
 
     printf("Pointer casts work: value=%d\n", value);

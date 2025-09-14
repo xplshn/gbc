@@ -176,7 +176,7 @@ func (p *Parser) parseTopLevel() *ast.Node {
 			stmt = p.parseUntypedGlobalDefinition(identTok)
 		}
 	default:
-		if p.isTypedPass && (p.isBuiltinType(p.current) || p.check(token.Const)) {
+		if p.isTypedPass && (p.isBuiltinType(p.current) || p.check(token.Const) || p.isPointerTypeAhead()) {
 			stmt = p.parseTypedVarOrFuncDecl(true)
 		} else {
 			stmt = p.parseExpr()
@@ -242,7 +242,7 @@ func (p *Parser) isBuiltinType(tok token.Token) bool {
 	return tok.Type >= token.Void && tok.Type <= token.Any
 }
 
-// isPointerCastAhead checks if the current position looks like a pointer cast: (type*)
+// isPointerCastAhead checks if the current position looks like a pointer cast: (*type)
 // This allows complex pointer casts while disallowing simple scalar C-style casts
 func (p *Parser) isPointerCastAhead() bool {
 	if !p.isTypedPass { return false }
@@ -252,27 +252,41 @@ func (p *Parser) isPointerCastAhead() bool {
 
 	if p.match(token.Const) {}
 
+	// Check for Go-style pointer syntax: *type
+	hasPointer := false
+	if p.match(token.Star) {
+		hasPointer = true
+		for p.match(token.Star) {} // Allow multiple stars for pointer-to-pointer
+	}
+
 	if p.isBuiltinType(p.current) {
 		p.advance()
 	} else if p.check(token.Ident) && p.isTypeName(p.current.Value) {
 		p.advance()
+	} else if p.match(token.LBracket) {
+		hasPointer = true
+		for !p.check(token.RBracket) && !p.check(token.EOF) { p.advance() }
+		if p.check(token.RBracket) { p.advance() }
 	} else {
 		return false
 	}
 
-	hasPointer := false
-	if p.match(token.Star) {
-		hasPointer = true
-		for p.match(token.Star) {}
-	}
-
-	if p.match(token.LBracket) {
-		hasPointer = true
-		for !p.check(token.RBracket) && !p.check(token.EOF) { p.advance() }
-		if p.check(token.RBracket) { p.advance() }
-	}
-
 	return hasPointer && p.check(token.RParen)
+}
+
+func (p *Parser) isPointerTypeAhead() bool {
+	if !p.check(token.Star) { return false }
+
+	originalPos, originalCurrent := p.pos, p.current
+	defer func() { p.pos, p.current = originalPos, originalCurrent }()
+
+	// Skip all consecutive * tokens
+	for p.check(token.Star) {
+		p.advance()
+	}
+
+	// Check if what follows the * is actually a type name
+	return p.isBuiltinType(p.current) || (p.check(token.Ident) && p.isTypeName(p.current.Value))
 }
 
 func (p *Parser) parseStmt() *ast.Node {
@@ -298,7 +312,7 @@ func (p *Parser) parseStmt() *ast.Node {
 		return ast.NewLabel(tok, labelName, p.parseStmt())
 	}
 
-	if p.isTypedPass && (p.isBuiltinType(p.current) || (p.isTypeName(p.current.Value) && p.peek().Type != token.Define) || p.check(token.Const)) {
+	if p.isTypedPass && (p.isBuiltinType(p.current) || (p.isTypeName(p.current.Value) && p.peek().Type != token.Define) || p.check(token.Const) || p.isPointerTypeAhead()) {
 		return p.parseTypedVarOrFuncDecl(false)
 	}
 
@@ -882,85 +896,85 @@ func (p *Parser) parseTypedVarDeclBody(startTok token.Token, declType *ast.BxTyp
 }
 
 func (p *Parser) parseType() *ast.BxType {
-	if !p.isTypedPass {
-		return nil
-	}
+    if !p.isTypedPass {
+        return nil
+    }
 
-	isConst := p.match(token.Const)
-	var baseType *ast.BxType
+    isConst := p.match(token.Const)
+    var baseType *ast.BxType
 
-	if p.match(token.LBracket) {
-		p.expect(token.RBracket, "Expected ']' to complete array type specifier")
-		elemType := p.parseType()
-		baseType = &ast.BxType{Kind: ast.TYPE_ARRAY, Base: elemType}
-	} else {
-		tok := p.current
-		if p.match(token.Struct) {
-			if p.check(token.Ident) && p.peek().Type != token.LBrace {
-				tagName := p.current.Value
-				p.advance()
-				baseType = &ast.BxType{Kind: ast.TYPE_STRUCT, Name: tagName, StructTag: tagName}
-			} else {
-				baseType = p.parseStructDef()
-			}
-		} else if p.match(token.Enum) {
-			if p.check(token.Ident) {
-				tagName := p.current.Value
-				p.advance()
-				baseType = &ast.BxType{Kind: ast.TYPE_ENUM, Name: tagName}
-			} else {
-				util.Error(tok, "Anonymous enums are not supported as types")
-				baseType = ast.TypeUntyped
-			}
-		} else if p.isBuiltinType(tok) {
-			p.advance()
-			var typeName string
-			for keyword, t := range token.KeywordMap {
-				if t == p.previous.Type {
-					typeName = keyword
-					break
-				}
-			}
+    // Handle Go-style pointer syntax (*int)
+    if p.match(token.Star) {
+        elemType := p.parseType()
+        baseType = &ast.BxType{Kind: ast.TYPE_POINTER, Base: elemType}
+    } else if p.match(token.LBracket) {
+        p.expect(token.RBracket, "Expected ']' to complete array type specifier")
+        elemType := p.parseType()
+        baseType = &ast.BxType{Kind: ast.TYPE_ARRAY, Base: elemType}
+    } else {
+        tok := p.current
+        if p.match(token.Struct) {
+            if p.check(token.Ident) && p.peek().Type != token.LBrace {
+                tagName := p.current.Value
+                p.advance()
+                baseType = &ast.BxType{Kind: ast.TYPE_STRUCT, Name: tagName, StructTag: tagName}
+            } else {
+                baseType = p.parseStructDef()
+            }
+        } else if p.match(token.Enum) {
+            if p.check(token.Ident) {
+                tagName := p.current.Value
+                p.advance()
+                baseType = &ast.BxType{Kind: ast.TYPE_ENUM, Name: tagName}
+            } else {
+                util.Error(tok, "Anonymous enums are not supported as types")
+                baseType = ast.TypeUntyped
+            }
+        } else if p.isBuiltinType(tok) {
+            p.advance()
+            var typeName string
+            for keyword, t := range token.KeywordMap {
+                if t == p.previous.Type {
+                    typeName = keyword
+                    break
+                }
+            }
 
-			if p.previous.Type == token.Void {
-				baseType = ast.TypeVoid
-			} else if p.previous.Type == token.StringKeyword {
-				baseType = ast.TypeString
-			} else if p.previous.Type >= token.Float && p.previous.Type <= token.Float64 {
-				baseType = &ast.BxType{Kind: ast.TYPE_FLOAT, Name: typeName}
-			} else {
-				if typeName == "" {
-					util.Error(tok, "Internal parser error: could not find string for builtin type %v", tok.Type)
-					return ast.TypeUntyped
-				}
-				baseType = &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: typeName}
-			}
-		} else if p.check(token.Ident) {
-			typeName := p.current.Value
-			if !p.isTypeName(typeName) {
-				util.Error(p.current, "Unknown type name '%s'", typeName)
-				p.advance()
-				return ast.TypeUntyped
-			}
-			p.advance()
-			baseType = &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: typeName}
-		} else {
-			util.Error(p.current, "Expected a type name, 'struct', 'enum', or '[]'")
-			p.advance()
-			return ast.TypeUntyped
-		}
-	}
+            if p.previous.Type == token.Void {
+                baseType = ast.TypeVoid
+            } else if p.previous.Type == token.StringKeyword {
+                baseType = ast.TypeString
+            } else if p.previous.Type >= token.Float && p.previous.Type <= token.Float64 {
+                baseType = &ast.BxType{Kind: ast.TYPE_FLOAT, Name: typeName}
+            } else {
+                if typeName == "" {
+                    util.Error(tok, "Internal parser error: could not find string for builtin type %v", tok.Type)
+                    return ast.TypeUntyped
+                }
+                baseType = &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: typeName}
+            }
+        } else if p.check(token.Ident) {
+            typeName := p.current.Value
+            if !p.isTypeName(typeName) {
+                util.Error(p.current, "Unknown type name '%s'", typeName)
+                p.advance()
+                return ast.TypeUntyped
+            }
+            p.advance()
+            baseType = &ast.BxType{Kind: ast.TYPE_PRIMITIVE, Name: typeName}
+        } else {
+            util.Error(p.current, "Expected a type name, 'struct', 'enum', or '[]'")
+            p.advance()
+            return ast.TypeUntyped
+        }
+    }
 
-	for p.match(token.Star) {
-		baseType = &ast.BxType{Kind: ast.TYPE_POINTER, Base: baseType}
-	}
-
-	if isConst {
-		newType := *baseType
-		newType.IsConst = true
-		return &newType
-	}
-	return baseType
+    if isConst {
+        newType := *baseType
+        newType.IsConst = true
+        return &newType
+    }
+    return baseType
 }
 
 func (p *Parser) parseStructDef() *ast.BxType {
@@ -1129,21 +1143,21 @@ func (p *Parser) parseAssignmentExpr() *ast.Node {
 	// Try to detect multi-assignment pattern: lhs1, lhs2, ... = rhs1, rhs2, ...
 	startPos := p.pos
 	startCurrent := p.current
-	
+
 	// Parse first expression
 	left := p.parseTernaryExpr()
-	
+
 	// Check if this could be a multi-assignment (comma followed by more expressions then equals)
 	if p.check(token.Comma) {
 		var lhsList []*ast.Node
 		lhsList = append(lhsList, left)
-		
+
 		// Parse comma-separated lvalues
 		for p.match(token.Comma) {
 			expr := p.parseTernaryExpr()
 			lhsList = append(lhsList, expr)
 		}
-		
+
 		// Check if we have an assignment operator
 		if op := p.current.Type; op >= token.Eq && op <= token.EqShr {
 			// Validate all lhs expressions are lvalues
@@ -1152,10 +1166,10 @@ func (p *Parser) parseAssignmentExpr() *ast.Node {
 					util.Error(p.current, "Invalid target for assignment")
 				}
 			}
-			
+
 			tok := p.current
 			p.advance()
-			
+
 			// Parse comma-separated rvalues
 			var rhsList []*ast.Node
 			for {
@@ -1165,21 +1179,21 @@ func (p *Parser) parseAssignmentExpr() *ast.Node {
 					break
 				}
 			}
-			
+
 			// Check that number of lhs and rhs match
 			if len(lhsList) != len(rhsList) {
 				util.Error(tok, "Mismatched number of variables and values in assignment (%d vs %d)", len(lhsList), len(rhsList))
 			}
-			
+
 			return ast.NewMultiAssign(tok, op, lhsList, rhsList)
 		}
-		
+
 		// Not a multi-assignment, backtrack and treat as comma expression
 		p.pos = startPos
 		p.current = startCurrent
 		left = p.parseTernaryExpr()
 	}
-	
+
 	// Regular single assignment
 	if op := p.current.Type; op >= token.Eq && op <= token.EqShr {
 		if !isLValue(left) {
@@ -1225,26 +1239,26 @@ func (p *Parser) parseBinaryExpr(minPrec int) *ast.Node {
 }
 
 func (p *Parser) parseUnaryExpr() *ast.Node {
-	tok := p.current
-	if p.match(token.Not, token.Complement, token.Minus, token.Plus, token.Inc, token.Dec, token.Star, token.And) {
-		op, opToken := p.previous.Type, p.previous
-		operand := p.parseUnaryExpr()
+    tok := p.current
+    if p.match(token.Not, token.Complement, token.Minus, token.Plus, token.Inc, token.Dec, token.Star, token.And) {
+        op, opToken := p.previous.Type, p.previous
+        operand := p.parseUnaryExpr()
 
-		if op == token.Star {
-			return ast.NewIndirection(tok, operand)
-		}
-		if op == token.And {
-			if !isLValue(operand) {
-				util.Error(opToken, "Address-of operator '&' requires an l-value")
-			}
-			return ast.NewAddressOf(tok, operand)
-		}
-		if (op == token.Inc || op == token.Dec) && !isLValue(operand) {
-			util.Error(opToken, "Prefix '++' or '--' requires an l-value")
-		}
-		return ast.NewUnaryOp(tok, op, operand)
-	}
-	return p.parsePostfixExpr()
+        if op == token.Star {
+            return ast.NewIndirection(tok, operand)
+        }
+        if op == token.And {
+            if !isLValue(operand) {
+                util.Error(opToken, "Address-of operator '&' requires an l-value")
+            }
+            return ast.NewAddressOf(tok, operand)
+        }
+        if (op == token.Inc || op == token.Dec) && !isLValue(operand) {
+            util.Error(opToken, "Prefix '++' or '--' requires an l-value")
+        }
+        return ast.NewUnaryOp(tok, op, operand)
+    }
+    return p.parsePostfixExpr()
 }
 
 func (p *Parser) parsePostfixExpr() *ast.Node {

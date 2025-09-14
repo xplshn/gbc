@@ -3,10 +3,10 @@ type struct Inner {
 };
 
 type struct Outer {
-    inner Inner*;
+    inner *Inner;
 };
 
-Outer* createOuter(val int) {
+*Outer createOuter(val int) {
     auto i = Inner{value: val};
     auto o = Outer{inner: &i};
     return (&o);

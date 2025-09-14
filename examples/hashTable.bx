@@ -10,14 +10,14 @@ extrn putchar, getchar, printf, scanf, strlen, strcpy, strcmp, malloc;
 int TABLE_SIZE = 101;
 
 type struct Entry {
-    key   byte*;
-    value byte*;
-    next  Entry*;
+    key   *byte;
+    value *byte;
+    next  *Entry;
 };
 
-Entry* table[TABLE_SIZE];
+*Entry table[TABLE_SIZE];
 
-int hash(key byte*) {
+int hash(key *byte) {
     result := 0;
     i := 0;
     while (key[i] != 0) {
@@ -27,7 +27,7 @@ int hash(key byte*) {
     return ((result % TABLE_SIZE + TABLE_SIZE) % TABLE_SIZE);
 }
 
-void set(key, value byte*) {
+void set(key, value *byte) {
     index := hash(key);
     entry := table[index];
 
@@ -53,7 +53,7 @@ void set(key, value byte*) {
     table[index] = new_entry;
 }
 
-byte* get(key byte*) {
+*byte get(key *byte) {
     index := hash(key);
     entry := table[index];
 

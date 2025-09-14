@@ -36,11 +36,11 @@ int main() {
     now := time(0);
     tptr := localtime(&now);
 
-    byte_ptr := (byte*)tptr;
-    year  := *((int*)(byte_ptr + 20)) + 1900;
-    month := *((int*)(byte_ptr + 16));    // 0 = Jan
-    today := *((int*)(byte_ptr + 12));
-    wday  := *((int*)(byte_ptr + 24));
+    byte_ptr := (*byte)tptr;
+    year  := *((*int)(byte_ptr + 20)) + 1900;
+    month := *((*int)(byte_ptr + 16));    // 0 = Jan
+    today := *((*int)(byte_ptr + 12));
+    wday  := *((*int)(byte_ptr + 24));
 
     days := days_in_month(month, year);
 

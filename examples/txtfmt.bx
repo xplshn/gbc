@@ -7,7 +7,7 @@ byte word_buf[50];
 int line_len;
 int word_len;
 
-void print_string(s byte*, len int) {
+void print_string(s *byte, len int) {
     auto i;
     i = 0;
     while (i < len) {

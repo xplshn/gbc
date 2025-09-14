@@ -60,7 +60,12 @@ func main() {
 			cfg.SetWarning(config.WarnPedantic, true)
 		}
 
-		// Apply warning flags
+		// Apply language standard first
+		if err := cfg.ApplyStd(std); err != nil {
+			util.Error(token.Token{}, err.Error())
+		}
+
+		// Apply warning flags (override standard settings)
 		for i, entry := range warningFlags {
 			if entry.Enabled != nil && *entry.Enabled {
 				cfg.SetWarning(config.Warning(i), true)
@@ -70,7 +75,7 @@ func main() {
 			}
 		}
 
-		// Apply feature flags
+		// Apply feature flags (override standard settings)
 		for i, entry := range featureFlags {
 			if entry.Enabled != nil && *entry.Enabled {
 				cfg.SetFeature(config.Feature(i), true)
@@ -78,11 +83,6 @@ func main() {
 			if entry.Disabled != nil && *entry.Disabled {
 				cfg.SetFeature(config.Feature(i), false)
 			}
-		}
-
-		// Apply language standard
-		if err := cfg.ApplyStd(std); err != nil {
-			util.Error(token.Token{}, err.Error())
 		}
 
 		// Set target architecture
