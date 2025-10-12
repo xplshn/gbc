@@ -141,8 +141,12 @@ The project is currently in its infancy, and the long-term goals are very ambiti
 
 ---
 
+<h6 align="center">
+    I'm a poor and broke Argentinian highschool student, send money!    
+</h6>
+
+---
+
 <p align="center">
     <img src="https://xplshn.com.ar/assets/lasFuerzasDelCielo.svg" width="10rem" alt="This image was produced by anto@xplshn.com.ar | github.com/xplshn. This is just a recreation of the symbolism used by Las Fuerzas del Cielo (Argentinian (paleo)Libertarian/AnarchoCapitalist Movement) [https://xplshn.com.ar/assets/lasFuerzasDelCielo.svg]"> INDUSTRIA ARGENTINA <img src="https://xplshn.com.ar/assets/lasFuerzasDelCielo.svg" width="10rem" alt="This image was produced by anto@xplshn.com.ar | github.com/xplshn. This is just a recreation of the symbolism used by Las Fuerzas del Cielo (Argentinian (paleo)Libertarian/AnarchoCapitalist Movement) [https://xplshn.com.ar/assets/lasFuerzasDelCielo.svg]">
 </p>
-
-###### I'm a poor and broke Argentinian highschool student, send money!
